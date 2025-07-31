@@ -6,7 +6,8 @@ const SourceArea = ({
   onAddSourceCard, 
   onDragStart, 
   onDragEnd, 
-  draggedCard 
+  draggedCard,
+  onCardRightClick // Make sure this prop is here
 }) => {
   const sourceRows = [
     {
@@ -54,6 +55,7 @@ const SourceArea = ({
                     onDragStart={onDragStart}
                     onDragEnd={onDragEnd}
                     isDragging={draggedCard?.id === card.id}
+                    onRightClick={onCardRightClick}
                   />
                 ))}
                 

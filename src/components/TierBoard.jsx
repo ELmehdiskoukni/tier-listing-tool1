@@ -6,6 +6,10 @@ import DeleteTierModal from './DeleteTierModal'
 import TierOptionsMenu from './TierOptionsMenu'
 import SourceArea from './SourceArea'
 import AddSourceCardModal from './AddSourceCardModal'
+import CardContextMenu from './CardContextMenu'
+import EditCardModal from './EditCardModal'
+import AddCommentModal from './AddCommentModal'
+import DeleteCardModal from './DeleteCardModal'
 
 const TierBoard = () => {
   // Modal state for card creation
@@ -68,6 +72,19 @@ const TierBoard = () => {
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false)
   const [selectedSourceType, setSelectedSourceType] = useState(null)
 
+  // State for card context menu
+  const [cardContextMenu, setCardContextMenu] = useState({
+    isOpen: false,
+    card: null,
+    position: { x: 0, y: 0 }
+  })
+
+  // State for card operation modals
+  const [isEditCardModalOpen, setIsEditCardModalOpen] = useState(false)
+  const [isAddCommentModalOpen, setIsAddCommentModalOpen] = useState(false)
+  const [isDeleteCardModalOpen, setIsDeleteCardModalOpen] = useState(false)
+  const [selectedCardForOperation, setSelectedCardForOperation] = useState(null)
+
   // Initial tier data with updated card types
   const [tiers, setTiers] = useState([
     {
@@ -75,7 +92,18 @@ const TierBoard = () => {
       name: 'A',
       color: 'bg-gray-300',
       cards: [
-        { id: 'card-1', text: 'Competitor A', type: 'competitor' },
+        { 
+          id: 'card-1', 
+          text: 'Competitor A', 
+          type: 'competitor',
+          comments: [
+            {
+              id: 'comment-1',
+              text: 'Market leader with strong brand recognition',
+              timestamp: '2024-01-15T10:30:00Z'
+            }
+          ]
+        },
         { id: 'card-2', text: 'Persona A', type: 'personas' },
         { 
           id: 'card-3', 
@@ -109,7 +137,7 @@ const TierBoard = () => {
         { id: 'card-12', text: 'Persona A', type: 'personas' },
         { id: 'card-13', text: 'IMG', type: 'image' },
         { id: 'card-14', text: 'Comp Text', type: 'competitor' },
-        { id: 'card-15', text: 'Text Card', type: 'text' }
+        { id: 'card-15', text: 'Hidden Card', type: 'text', hidden: true }
       ]
     },
     {
@@ -345,6 +373,206 @@ const TierBoard = () => {
     setSelectedSourceType(null)
   }
 
+  // Card context menu functions
+  const handleCardRightClick = (card, position) => {
+   
+
+    setCardContextMenu({
+      isOpen: true,
+      card: card,
+      position: { x: position.x, y: position.y }
+    })
+  }
+
+  const closeCardContextMenu = () => {
+    setCardContextMenu({
+      isOpen: false,
+      card: null,
+      position: { x: 0, y: 0 }
+    })
+  }
+
+  const handleEditCard = (card) => {
+    setSelectedCardForOperation(card)
+    setIsEditCardModalOpen(true)
+  }
+
+  const handleDeleteCard = (card) => {
+    setSelectedCardForOperation(card)
+    setIsDeleteCardModalOpen(true)
+  }
+
+  const handleDuplicateCard = (card) => {
+    // Find which tier or source area contains this card
+    let foundInSource = false
+    let sourceCategory = null
+
+    // Check source areas first
+    for (const [category, cards] of Object.entries(sourceCards)) {
+      if (cards.some(c => c.id === card.id)) {
+        foundInSource = true
+        sourceCategory = category
+        break
+      }
+    }
+
+    if (foundInSource) {
+      // Duplicate in source area
+      const newCard = {
+        ...card,
+        id: `source-${sourceCategory}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        text: `${card.text} Copy`,
+        comments: [] // Don't copy comments
+      }
+
+      setSourceCards(prevCards => ({
+        ...prevCards,
+        [sourceCategory]: [...prevCards[sourceCategory], newCard]
+      }))
+    } else {
+      // Duplicate in tier
+      const tierWithCard = tiers.find(tier => 
+        tier.cards.some(c => c.id === card.id)
+      )
+
+      if (tierWithCard) {
+        const newCard = {
+          ...card,
+          id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          text: `${card.text} Copy`,
+          comments: [] // Don't copy comments
+        }
+
+        const cardIndex = tierWithCard.cards.findIndex(c => c.id === card.id)
+        const updatedTier = {
+          ...tierWithCard,
+          cards: [
+            ...tierWithCard.cards.slice(0, cardIndex + 1),
+            newCard,
+            ...tierWithCard.cards.slice(cardIndex + 1)
+          ]
+        }
+
+        setTiers(prevTiers =>
+          prevTiers.map(tier =>
+            tier.id === tierWithCard.id ? updatedTier : tier
+          )
+        )
+      }
+    }
+  }
+
+  const handleAddCommentToCard = (card) => {
+    setSelectedCardForOperation(card)
+    setIsAddCommentModalOpen(true)
+  }
+
+  const handleToggleCardHidden = (card) => {
+    const isCurrentlyHidden = card.hidden || false
+    updateCardProperty(card, { hidden: !isCurrentlyHidden })
+  }
+
+  const handleChangeCardImage = (card) => {
+    // For now, we'll show an alert. In a full implementation, 
+    // this would open an image selection modal similar to the create modal
+    alert('Change Image feature would open an image selector modal. This could be implemented by reusing the image upload/logo finder logic from the AddSourceCardModal.')
+  }
+
+  // Save edited card
+  const handleSaveEditedCard = (card, updates) => {
+    updateCardProperty(card, updates)
+  }
+
+  // Add comment to card
+  const handleSaveComment = (card, comment, updatedComments = null) => {
+    if (updatedComments !== null) {
+      // This is a comment deletion - use the provided updated comments array
+      updateCardProperty(card, { comments: updatedComments })
+    } else if (comment) {
+      // This is adding a new comment
+      const currentComments = card.comments || []
+      const newComments = [...currentComments, comment]
+      updateCardProperty(card, { comments: newComments })
+    }
+  }
+
+  // Confirm delete card
+  const handleConfirmDeleteCard = (card) => {
+    // Find which tier or source area contains this card and remove it
+    let foundInSource = false
+    let sourceCategory = null
+
+    // Check source areas first
+    for (const [category, cards] of Object.entries(sourceCards)) {
+      if (cards.some(c => c.id === card.id)) {
+        foundInSource = true
+        sourceCategory = category
+        break
+      }
+    }
+
+    if (foundInSource) {
+      // Remove from source area
+      setSourceCards(prevCards => ({
+        ...prevCards,
+        [sourceCategory]: prevCards[sourceCategory].filter(c => c.id !== card.id)
+      }))
+    } else {
+      // Remove from tier
+      const tierWithCard = tiers.find(tier => 
+        tier.cards.some(c => c.id === card.id)
+      )
+
+      if (tierWithCard) {
+        const updatedTier = {
+          ...tierWithCard,
+          cards: tierWithCard.cards.filter(c => c.id !== card.id)
+        }
+
+        setTiers(prevTiers =>
+          prevTiers.map(tier =>
+            tier.id === tierWithCard.id ? updatedTier : tier
+          )
+        )
+      }
+    }
+  }
+
+  // Helper function to update a card property across all locations
+  const updateCardProperty = (targetCard, updates) => {
+    // Check source areas first
+    let foundInSource = false
+    let sourceCategory = null
+
+    for (const [category, cards] of Object.entries(sourceCards)) {
+      if (cards.some(c => c.id === targetCard.id)) {
+        foundInSource = true
+        sourceCategory = category
+        break
+      }
+    }
+
+    if (foundInSource) {
+      // Update in source area
+      setSourceCards(prevCards => ({
+        ...prevCards,
+        [sourceCategory]: prevCards[sourceCategory].map(card =>
+          card.id === targetCard.id ? { ...card, ...updates } : card
+        )
+      }))
+    } else {
+      // Update in tier
+      setTiers(prevTiers =>
+        prevTiers.map(tier => ({
+          ...tier,
+          cards: tier.cards.map(card =>
+            card.id === targetCard.id ? { ...card, ...updates } : card
+          )
+        }))
+      )
+    }
+  }
+
   const openTierOptionsMenu = (tierId, position) => {
     setTierOptionsMenu({
       isOpen: true,
@@ -530,6 +758,7 @@ const TierBoard = () => {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         draggedCard={draggedCard}
+        onCardRightClick={handleCardRightClick}
       />
 
       {/* Main Tier Board */}
@@ -551,10 +780,25 @@ const TierBoard = () => {
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
               onAddTierBelow={() => addTierBelow(tier.id)}
+              onCardRightClick={handleCardRightClick}
             />
           ))}
         </div>
       </div>
+
+      {/* Card Context Menu */}
+      <CardContextMenu
+        isOpen={cardContextMenu.isOpen}
+        position={cardContextMenu.position}
+        card={cardContextMenu.card}
+        onClose={closeCardContextMenu}
+        onEdit={handleEditCard}
+        onDelete={handleDeleteCard}
+        onDuplicate={handleDuplicateCard}
+        onAddComment={handleAddCommentToCard}
+        onToggleHidden={handleToggleCardHidden}
+        onChangeImage={handleChangeCardImage}
+      />
 
       {/* Tier Options Menu - Rendered at board level */}
       <TierOptionsMenu
@@ -567,6 +811,39 @@ const TierBoard = () => {
         onDuplicate={() => openTierOptions(tierOptionsMenu.tierId, 'duplicate')}
         onDelete={() => openTierOptions(tierOptionsMenu.tierId, 'delete')}
         position={tierOptionsMenu.position}
+      />
+
+      {/* Edit Card Modal */}
+      <EditCardModal
+        isOpen={isEditCardModalOpen}
+        onClose={() => {
+          setIsEditCardModalOpen(false)
+          setSelectedCardForOperation(null)
+        }}
+        card={selectedCardForOperation}
+        onSave={handleSaveEditedCard}
+      />
+
+      {/* Add Comment Modal */}
+      <AddCommentModal
+        isOpen={isAddCommentModalOpen}
+        onClose={() => {
+          setIsAddCommentModalOpen(false)
+          setSelectedCardForOperation(null)
+        }}
+        card={selectedCardForOperation}
+        onAddComment={handleSaveComment}
+      />
+
+      {/* Delete Card Modal */}
+      <DeleteCardModal
+        isOpen={isDeleteCardModalOpen}
+        onClose={() => {
+          setIsDeleteCardModalOpen(false)
+          setSelectedCardForOperation(null)
+        }}
+        card={selectedCardForOperation}
+        onConfirm={handleConfirmDeleteCard}
       />
 
       {/* Source Card Creation Modal */}

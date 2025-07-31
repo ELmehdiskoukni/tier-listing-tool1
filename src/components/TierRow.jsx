@@ -15,7 +15,8 @@ const TierRow = ({
   draggedCard,
   onDragStart,
   onDragEnd,
-  onAddTierBelow // New prop for adding tier
+  onAddTierBelow,
+  onCardRightClick // Make sure this prop is here
 }) => {
   const optionsButtonRef = useRef(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -182,6 +183,7 @@ const TierRow = ({
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 isDragging={draggedCard?.id === card.id}
+                onRightClick={onCardRightClick}
               />
             ))}
             
