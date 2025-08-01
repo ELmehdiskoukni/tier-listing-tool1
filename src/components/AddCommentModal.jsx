@@ -1,8 +1,18 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
 const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
   const [comment, setComment] = useState('')
   const [isAdding, setIsAdding] = useState(false)
+  const [localComments, setLocalComments] = useState([])
+
+  // Sync local comments with card comments when card changes
+  useEffect(() => {
+    if (card && card.comments) {
+      setLocalComments(card.comments)
+    } else {
+      setLocalComments([])
+    }
+  }, [card])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -50,8 +60,8 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
   if (!isOpen || !card) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999999999]">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4 relative z-[99999999999]">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-gray-800">
@@ -98,13 +108,13 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
           </div>
 
           {/* Existing Comments */}
-          {card.comments && card.comments.length > 0 && (
+          {localComments && localComments.length > 0 && (
             <div className="mb-6">
               <h3 className="text-sm font-medium text-gray-700 mb-2">
-                Previous Comments ({card.comments.length})
+                Previous Comments ({localComments.length})
               </h3>
               <div className="max-h-32 overflow-y-auto space-y-2">
-                {card.comments.map((existingComment) => (
+                {localComments.map((existingComment) => (
                   <div key={existingComment.id} className="p-2 bg-gray-50 rounded text-sm flex justify-between items-start">
                     <div className="flex-1">
                       <p className="text-gray-800">{existingComment.text}</p>
@@ -116,7 +126,8 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
                       type="button"
                       onClick={() => {
                         if (confirm('Are you sure you want to delete this comment?')) {
-                          const updatedComments = card.comments.filter(c => c.id !== existingComment.id)
+                          const updatedComments = localComments.filter(c => c.id !== existingComment.id)
+                          setLocalComments(updatedComments)
                           onAddComment(card, null, updatedComments)
                         }
                       }}

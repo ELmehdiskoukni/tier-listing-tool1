@@ -52,7 +52,7 @@ const TierOptionsMenu = ({
   return (
     <div 
       ref={menuRef}
-      className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-48 z-50"
+      className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-48 z-[99999999999]"
       style={{
         top: adjustedPosition.top,
         right: adjustedPosition.right,

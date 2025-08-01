@@ -1,6 +1,6 @@
 import React from 'react'
 
-const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick }) => {
+const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDeletedSource = false }) => {
   // Define card styles based on type - NO ICONS, but support images
   const getCardStyle = (type) => {
     switch (type) {
@@ -58,7 +58,7 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick }) => {
 
   return (
     <div
-      draggable={!isHidden}
+      draggable={!isHidden && !isDeletedSource}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onContextMenu={handleRightClick}
@@ -68,15 +68,25 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick }) => {
         min-w-fit select-none relative
         ${isDragging ? 'opacity-50 cursor-grabbing' : ''}
         ${isHidden ? 'opacity-40 grayscale' : ''}
+        ${isDeletedSource ? 'opacity-60 grayscale bg-gray-200 border-gray-400 cursor-not-allowed' : ''}
         ${isImageCard ? 'p-1' : 'px-3 py-2'}
         ${getCardStyle(card.type)}
       `}
-      title={`${card.type}: ${card.text} ${isHidden ? '(hidden)' : ''} (right-click for options)`}
+      title={`${card.type}: ${card.text} ${isHidden ? '(hidden)' : ''} ${isDeletedSource ? '(deleted source)' : ''} (right-click for options)`}
     >
       {/* Comment indicator */}
       {card.comments && card.comments.length > 0 && (
         <div className="absolute -top-1 -left-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
           <span className="text-xs text-white font-bold">{card.comments.length}</span>
+        </div>
+      )}
+
+      {/* Deleted source indicator */}
+      {isDeletedSource && (
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </div>
       )}
 

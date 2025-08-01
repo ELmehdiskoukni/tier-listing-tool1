@@ -19,7 +19,7 @@ const DeleteTierModal = ({ isOpen, onClose, tierName, cardCount, onConfirm }) =>
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999999999]">
       <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">

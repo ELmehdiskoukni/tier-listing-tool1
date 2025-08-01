@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import Card from './Card'
 import ControlButtons from './ControlButtons'
 
@@ -9,6 +10,7 @@ const TierRow = ({
   onMoveTierUp, 
   onMoveTierDown, 
   onAddCard, 
+  onImportCards,
   onOpenOptionsMenu,
   onOpenOptions,
   onMoveCard,
@@ -16,12 +18,58 @@ const TierRow = ({
   onDragStart,
   onDragEnd,
   onAddTierBelow,
-  onCardRightClick // Make sure this prop is here
+  onCardRightClick, // Make sure this prop is here
+  isCardFromDeletedSource // New prop for checking deleted sources
 }) => {
+  const [showAddDropdown, setShowAddDropdown] = useState(false)
   const optionsButtonRef = useRef(null)
+  const dropdownRef = useRef(null)
+  const dropdownMenuRef = useRef(null) // New ref for the portal dropdown
   const [isDragOver, setIsDragOver] = useState(false)
   const [dragOverPosition, setDragOverPosition] = useState(null) // 'start', 'middle', 'end'
   const [isRowHovered, setIsRowHovered] = useState(false)
+
+  // Handle clicking outside dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Check if click is outside both the button and the dropdown menu
+      const isOutsideButton = dropdownRef.current && !dropdownRef.current.contains(event.target)
+      const isOutsideDropdown = dropdownMenuRef.current && !dropdownMenuRef.current.contains(event.target)
+      
+      if (isOutsideButton && isOutsideDropdown) {
+        setShowAddDropdown(false)
+      }
+    }
+
+    if (showAddDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showAddDropdown])
+
+  // Calculate dropdown position for portal
+  const getDropdownPosition = () => {
+    if (!dropdownRef.current) return null
+    
+    const rect = dropdownRef.current.getBoundingClientRect()
+    const dropdownHeight = 200 // Approximate height of dropdown menu
+    const viewportHeight = window.innerHeight
+    const spaceBelow = viewportHeight - rect.bottom
+    const spaceAbove = rect.top
+    
+    // Check if there's enough space below, if not, position above
+    const shouldPositionAbove = spaceBelow < dropdownHeight && spaceAbove > dropdownHeight
+    
+    return {
+      top: shouldPositionAbove ? rect.top - dropdownHeight - 4 : rect.bottom + 4, // 4px gap
+      left: rect.right - 192, // 192px = w-48 (48 * 4px)
+      width: 192, // w-48
+      positionAbove: shouldPositionAbove
+    }
+  }
 
   const handleOptionsClick = () => {
     if (optionsButtonRef.current) {
@@ -32,6 +80,10 @@ const TierRow = ({
       }
       onOpenOptionsMenu(position)
     }
+  }
+
+  const handleDropdownClick = () => {
+    setShowAddDropdown(!showAddDropdown)
   }
 
   const handleDragOver = (e) => {
@@ -115,7 +167,7 @@ const TierRow = ({
   }
   return (
     <div 
-      className="border border-gray-300 rounded-lg overflow-hidden"
+      className="border border-gray-300 rounded-lg overflow-visible relative"
       onMouseEnter={() => setIsRowHovered(true)}
       onMouseLeave={() => setIsRowHovered(false)}
     >
@@ -140,7 +192,7 @@ const TierRow = ({
             {isRowHovered && (
               <button
                 onClick={onAddTierBelow}
-                className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-all duration-200 transform hover:scale-110"
+                className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-all duration-200 transform hover:scale-110 relative z-10"
                 title="Add tier below"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -161,7 +213,7 @@ const TierRow = ({
         {/* Main content area - Cards */}
         <div 
           className={`
-            flex-1 flex items-center p-4 bg-gray-50 min-h-[80px] transition-all duration-200
+            flex-1 flex items-center p-4 bg-gray-50 min-h-[80px] transition-all duration-200 overflow-visible
             ${getDropZoneClasses()}
           `}
           onDragOver={handleDragOver}
@@ -184,6 +236,7 @@ const TierRow = ({
                 onDragEnd={onDragEnd}
                 isDragging={draggedCard?.id === card.id}
                 onRightClick={onCardRightClick}
+                isDeletedSource={isCardFromDeletedSource ? isCardFromDeletedSource(card) : false}
               />
             ))}
             
@@ -192,14 +245,97 @@ const TierRow = ({
               <div className="w-1 h-12 bg-blue-500 rounded-full animate-pulse" />
             )}
             
-            {/* Add card button */}
-            <button
-              onClick={onAddCard}
-              className="w-12 h-12 bg-gray-400 hover:bg-gray-500 text-white rounded-md flex items-center justify-center transition-colors duration-200 ml-auto"
-              title="Add new card"
-            >
-              <span className="text-xl font-bold">+</span>
-            </button>
+            {/* Add card dropdown button */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={handleDropdownClick}
+                className="w-12 h-12 bg-gray-400 hover:bg-gray-500 text-white rounded-md flex items-center justify-center transition-colors duration-200"
+                title="Add new card or import from sources (click for options)"
+              >
+                <span className="text-xl font-bold">+</span>
+              </button>
+              
+              {/* Dropdown menu - rendered via portal */}
+              {showAddDropdown && createPortal(
+                <div 
+                  ref={dropdownMenuRef}
+                  className="fixed bg-white border border-gray-200 rounded-md shadow-lg z-[999999999999]"
+                  style={{
+                    top: getDropdownPosition()?.top || 0,
+                    left: getDropdownPosition()?.left || 0,
+                    width: getDropdownPosition()?.width || 192
+                  }}
+                >
+                  {/* Dropdown arrow indicator */}
+                  <div 
+                    className={`absolute w-3 h-3 bg-white border-l border-t border-gray-200 transform ${
+                      getDropdownPosition()?.positionAbove 
+                        ? 'bottom-[-6px] left-4 rotate-45 border-r border-b' 
+                        : 'top-[-6px] left-4 rotate-45 border-r border-b'
+                    }`}
+                  />
+                  <div className="py-1">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onAddCard()
+                        setShowAddDropdown(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Create New Card
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onImportCards('competitors')
+                        setShowAddDropdown(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      Competitors
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onImportCards('personas')
+                        setShowAddDropdown(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      Personas
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onImportCards('pages')
+                        setShowAddDropdown(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Pages
+                    </button>
+                  </div>
+                </div>,
+                document.body
+              )}
+            </div>
           </div>
         </div>
 
@@ -208,7 +344,7 @@ const TierRow = ({
           <button
             ref={optionsButtonRef}
             onClick={handleOptionsClick}
-            className="w-8 h-8 text-gray-600 hover:text-gray-800 transition-colors duration-200"
+            className="w-8 h-8 text-gray-600 hover:text-gray-800 transition-colors duration-200 relative z-10"
             title="Tier options"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

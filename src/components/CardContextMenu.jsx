@@ -10,7 +10,10 @@ const CardContextMenu = ({
   onDuplicate,
   onAddComment,
   onToggleHidden,
-  onChangeImage
+  onChangeImage,
+  onRemoveImage,
+  onPickAnotherPersona,
+  isCardInSourceArea
 }) => {
   const menuRef = useRef(null)
 
@@ -40,20 +43,30 @@ const CardContextMenu = ({
 
   if (!isOpen || !card) return null
 
+  // Check if card has an image
+  const hasImage = card.imageUrl || card.image
+  const isImageCard = card.subtype === 'image' || hasImage
+  
+  // Check if card is a persona card
+  const isPersonaCard = card.type === 'personas' || card.type === 'persona'
+
   const menuItems = [
-    {
-      id: 'edit',
-      label: 'Edit',
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-        </svg>
-      ),
-      onClick: () => {
-        onEdit(card)
-        onClose()
+    // Edit option - hide for persona cards in tiers
+    ...(isPersonaCard && !isCardInSourceArea(card) ? [] : [
+      {
+        id: 'edit',
+        label: 'Edit',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+        ),
+        onClick: () => {
+          onEdit(card)
+          onClose()
+        }
       }
-    },
+    ]),
     {
       id: 'duplicate',
       label: 'Duplicate',
@@ -98,6 +111,52 @@ const CardContextMenu = ({
         onClose()
       }
     },
+    // Persona-specific options (only show for persona cards in tiers, not in source area)
+    ...(isPersonaCard && !isCardInSourceArea(card) ? [
+      {
+        id: 'pick-another-persona',
+        label: 'Pick another persona',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        ),
+        onClick: () => {
+          onPickAnotherPersona(card)
+          onClose()
+        }
+      }
+    ] : []),
+    // Image-related options (only show for image cards)
+    ...(isImageCard ? [
+      {
+        id: 'change-image',
+        label: 'Change Image',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2z" />
+          </svg>
+        ),
+        onClick: () => {
+          onChangeImage(card)
+          onClose()
+        }
+      },
+      {
+        id: 'remove-image',
+        label: 'Remove Image',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        ),
+        onClick: () => {
+          onRemoveImage(card)
+          onClose()
+        },
+        className: 'text-red-600 hover:bg-red-50'
+      }
+    ] : []),
     {
       id: 'divider',
       isDivider: true
@@ -127,7 +186,7 @@ const CardContextMenu = ({
   return (
     <div 
       ref={menuRef}
-      className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-48 z-50"
+      className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-48 z-[9999999999]"
       style={{
         top: adjustedPosition.top,
         left: adjustedPosition.left,

@@ -4,6 +4,20 @@ const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
   const [cardText, setCardText] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
+  // Card type display configuration
+  const cardTypeConfig = {
+    image: { label: 'Image', color: 'bg-purple-100 border-purple-300 text-purple-800' },
+    text: { label: 'Text', color: 'bg-gray-100 border-gray-300 text-gray-800' },
+    page: { label: 'Page', color: 'bg-green-100 border-green-300 text-green-800' },
+    personas: { label: 'Personas', color: 'bg-blue-100 border-blue-300 text-blue-800' },
+    competitor: { label: 'Competitor', color: 'bg-orange-100 border-orange-300 text-orange-800' },
+    // Legacy support for old card types
+    'sitemaps-page': { label: 'Page', color: 'bg-green-100 border-green-300 text-green-800' },
+    'competitor-text': { label: 'Competitor', color: 'bg-orange-100 border-orange-300 text-orange-800' },
+    'competitor-img': { label: 'Competitor', color: 'bg-orange-100 border-orange-300 text-orange-800' },
+    'persona': { label: 'Personas', color: 'bg-blue-100 border-blue-300 text-blue-800' }
+  }
+
   // Update local state when modal opens
   useEffect(() => {
     if (isOpen && card) {
@@ -52,8 +66,10 @@ const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
 
   if (!isOpen || !card) return null
 
+  const cardType = cardTypeConfig[card.type] || cardTypeConfig.text
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999999999]">
       <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-4">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
@@ -71,6 +87,21 @@ const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
         </div>
 
         <form onSubmit={handleSubmit}>
+          {/* Card Type Display (Read-only) */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Card Type
+            </label>
+            <div className="flex items-center gap-3 p-3 border border-gray-300 rounded-md bg-gray-50">
+              <div 
+                className={`w-4 h-4 rounded-full border ${cardType.color}`}
+                title={`${cardType.label} card color`}
+              />
+              <span className="text-sm font-medium text-gray-600">{cardType.label}</span>
+              <span className="text-xs text-gray-500 ml-auto">(Cannot be changed)</span>
+            </div>
+          </div>
+
           {/* Card Text Input */}
           <div className="mb-6">
             <label htmlFor="cardText" className="block text-sm font-medium text-gray-700 mb-2">
