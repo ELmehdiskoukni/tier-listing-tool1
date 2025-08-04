@@ -7,29 +7,44 @@ import ExportPreview from './ExportPreview'
 
 const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
   const [exportFormat, setExportFormat] = useState('pdf')
-  const [isExporting, setIsExporting] = useState(false)
   const [exportOptions, setExportOptions] = useState({
     includeSourceArea: true,
     includeComments: true,
-    includeHiddenCards: false,
-    pageOrientation: 'landscape',
-    imageQuality: 'high'
+    includeHiddenCards: false
   })
-  
+  const [isExporting, setIsExporting] = useState(false)
   const boardRef = useRef(null)
+
+  // Check if a card references a deleted source item
+  const isCardFromDeletedSource = (card) => {
+    // Only check cards that are from source areas (competitor, page, personas)
+    if (!(card.type === 'competitor' || card.type === 'page' || card.type === 'personas')) {
+      return false
+    }
+
+    // Get all current source cards
+    const allSourceCards = [
+      ...(sourceCards.competitors || []),
+      ...(sourceCards.pages || []),
+      ...(sourceCards.personas || [])
+    ]
+    
+    // Check if there's a matching source card with the same text and type
+    const matchingSourceCard = allSourceCards.find(sourceCard => 
+      sourceCard.text === card.text && sourceCard.type === card.type
+    )
+    
+    // If no matching source card is found, this card references a deleted source item
+    return !matchingSourceCard
+  }
 
   const createExportElement = () => {
     const exportDiv = document.createElement('div')
-    exportDiv.className = 'export-tier-board bg-white p-6 rounded-lg shadow-lg'
-    exportDiv.style.position = 'absolute'
-    exportDiv.style.left = '-9999px'
-    exportDiv.style.top = '-9999px'
-    exportDiv.style.width = '1200px' // Fixed width for consistent exports
-    exportDiv.style.backgroundColor = '#ffffff'
+    exportDiv.className = 'bg-white p-4 rounded-lg shadow-sm border max-w-4xl mx-auto'
+    exportDiv.innerHTML = '<h2 class="text-xl font-bold mb-4 text-center">Tier Board Export</h2>'
     
-    // Create the tier board content without interactive elements
     const tierBoardContent = document.createElement('div')
-    tierBoardContent.className = 'space-y-2'
+    tierBoardContent.className = 'space-y-3'
     
     tiers.forEach(tier => {
       const tierRow = document.createElement('div')
@@ -38,26 +53,30 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
       const tierContent = document.createElement('div')
       tierContent.className = 'flex items-stretch min-h-[80px]'
       
-      // Tier label (no controls, no buttons)
       const tierLabel = document.createElement('div')
       tierLabel.className = `flex items-center justify-center w-16 ${tier.color} border-r border-gray-300`
       tierLabel.innerHTML = `<span class="text-xl font-bold text-gray-800">${tier.name}</span>`
       
-      // Cards area (no add button, no controls)
       const cardsArea = document.createElement('div')
       cardsArea.className = 'flex-1 flex items-center p-4 bg-gray-50 min-h-[80px]'
       
       const cardsContainer = document.createElement('div')
       cardsContainer.className = 'flex items-center gap-3 flex-wrap w-full'
       
-      // Add cards (static only)
-      tier.cards
+      const cards = tier.cards || []
+      cards
         .filter(card => !card.hidden || exportOptions.includeHiddenCards)
         .forEach(card => {
           const cardElement = document.createElement('div')
-          cardElement.className = 'bg-white border border-gray-300 rounded-lg p-3 shadow-sm min-w-[120px] max-w-[200px]'
+          const isDeletedSource = isCardFromDeletedSource(card)
           
-          let cardContent = `<div class="font-medium text-gray-800 mb-1">${card.text}</div>`
+          cardElement.className = `bg-white border border-gray-300 rounded-lg p-3 shadow-sm min-w-[120px] max-w-[200px] relative ${
+            isDeletedSource ? 'bg-gray-200 border-gray-400' : ''
+          }`
+          
+          let cardContent = `<div class="font-medium text-gray-800 mb-1 ${
+            isDeletedSource ? 'text-gray-500 italic line-through' : ''
+          }">${isDeletedSource ? 'This item is deleted' : card.text}</div>`
           
           if (exportOptions.includeComments && card.comments && card.comments.length > 0) {
             cardContent += `<div class="text-xs text-gray-500">${card.comments.length} comment${card.comments.length > 1 ? 's' : ''}</div>`

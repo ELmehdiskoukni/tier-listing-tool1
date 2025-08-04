@@ -14,8 +14,45 @@ import ChangeImageModal from './ChangeImageModal'
 import ImportCardsModal from './ImportCardsModal'
 import ExportModal from './ExportModal'
 import PickAnotherPersonaModal from './PickAnotherPersonaModal'
+import { useTierBoard } from '../hooks/useTierBoard'
+import { tierAPI } from '../api/apiClient'
 
 const TierBoard = () => {
+  // Use the API hook for data management
+  const {
+    tiers,
+    sourceCards,
+    versionHistory,
+    currentVersionIndex,
+    loading,
+    setLoading,
+    error,
+    setError,
+    createTier,
+    updateTier,
+    deleteTier,
+    moveTierPosition,
+    duplicateTier,
+    clearTierCards,
+    createSourceCard,
+    updateSourceCard,
+    deleteSourceCard,
+    createCard,
+    updateCard,
+    deleteCard,
+    moveCard,
+    duplicateCard,
+    toggleCardHidden,
+    createComment,
+    deleteComment,
+    createVersion,
+    restoreVersion,
+    importCardsToTier,
+    clearError,
+    refreshData,
+    deleteCardsAndTier
+  } = useTierBoard()
+
   // Modal state for card creation
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedTierId, setSelectedTierId] = useState(null)
@@ -34,43 +71,6 @@ const TierBoard = () => {
 
   // State for drag and drop
   const [draggedCard, setDraggedCard] = useState(null)
-
-  // State for source cards (above tier board)
-  const [sourceCards, setSourceCards] = useState({
-    competitors: [
-      { 
-        id: 'source-comp-1', 
-        text: 'Google Google', 
-        type: 'competitor', 
-        subtype: 'image', 
-        sourceCategory: 'competitors',
-        imageUrl: 'https://img.logo.dev/google.com?token=pk_X-1ZO13ESamOoEeKeLUTVA&format=png&size=200'
-      },
-      { 
-        id: 'source-comp-2', 
-        text: 'Meta', 
-        type: 'competitor', 
-        subtype: 'text', 
-        sourceCategory: 'competitors' 
-      },
-      { 
-        id: 'source-comp-3', 
-        text: 'Apple Apple', 
-        type: 'competitor', 
-        subtype: 'image', 
-        sourceCategory: 'competitors',
-        imageUrl: 'https://img.logo.dev/apple.com?token=pk_X-1ZO13ESamOoEeKeLUTVA&format=png&size=200'
-      }
-    ],
-    pages: [
-      { id: 'source-page-1', text: 'Homepage', type: 'page', sourceCategory: 'pages' },
-      { id: 'source-page-2', text: 'About Us', type: 'page', sourceCategory: 'pages' }
-    ],
-    personas: [
-      { id: 'source-persona-1', text: 'Adam', type: 'personas', sourceCategory: 'personas' },
-      { id: 'source-persona-2', text: 'Sara', type: 'personas', sourceCategory: 'personas' }
-    ]
-  })
 
   // State for source card creation modal
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false)
@@ -101,134 +101,120 @@ const TierBoard = () => {
   const [isPickAnotherPersonaModalOpen, setIsPickAnotherPersonaModalOpen] = useState(false)
 
   // Version History State
-  const [versionHistory, setVersionHistory] = useState([])
-  const [currentVersionIndex, setCurrentVersionIndex] = useState(-1)
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
 
-  // Initial tier data with updated card types
-  const [tiers, setTiers] = useState([
-    {
-      id: 'tier-a',
-      name: 'A',
-      color: 'bg-blue-200',
-      cards: []
-    },
-    {
-      id: 'tier-b',
-      name: 'B',
-      color: 'bg-blue-200',
-      cards: []
-    },
-    {
-      id: 'tier-c',
-      name: 'C',
-      color: 'bg-blue-200',
-      cards: []
-    },
-    {
-      id: 'tier-d',
-      name: 'D',
-      color: 'bg-yellow-200',
-      cards: []
-    },
-    {
-      id: 'tier-e',
-      name: 'E',
-      color: 'bg-purple-200',
-      cards: []
-    }
-  ])
-
-  // Initialize version history with current state
-  useEffect(() => {
-    const initialVersion = {
-      id: Date.now(),
-      timestamp: new Date().toISOString(),
-      description: 'Initial state',
-      tiers: JSON.parse(JSON.stringify(tiers)),
-      sourceCards: JSON.parse(JSON.stringify(sourceCards))
-    }
-    setVersionHistory([initialVersion])
-    setCurrentVersionIndex(0)
-  }, [])
-
   // Save version after significant changes
-  const saveVersion = (description) => {
-    const newVersion = {
-      id: Date.now(),
-      timestamp: new Date().toISOString(),
-      description,
-      tiers: JSON.parse(JSON.stringify(tiers)),
-      sourceCards: JSON.parse(JSON.stringify(sourceCards))
+  const saveVersion = async (description) => {
+    try {
+      await createVersion({
+        description,
+        tiersData: JSON.parse(JSON.stringify(tiers)),
+        sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+      })
+    } catch (err) {
+      console.error('Failed to save version:', err)
     }
-    
-    setVersionHistory(prev => {
-      const updatedHistory = [...prev.slice(0, currentVersionIndex + 1), newVersion]
-      // Keep only last 20 versions
-      return updatedHistory.slice(-20)
-    })
-    setCurrentVersionIndex(prev => Math.min(prev + 1, 19))
   }
 
   // Restore version
-  const restoreVersion = (versionIndex) => {
-    if (versionIndex < 0 || versionIndex >= versionHistory.length) return
-    
-    const version = versionHistory[versionIndex]
-    setTiers(JSON.parse(JSON.stringify(version.tiers)))
-    setSourceCards(JSON.parse(JSON.stringify(version.sourceCards)))
-    setCurrentVersionIndex(versionIndex)
+  const handleRestoreVersion = async (versionId) => {
+    try {
+      // Set loading state for version restoration
+      setLoading(prev => ({ ...prev, versions: true }))
+      
+      // Show restoration in progress message
+      setError('Restoring version... Please wait.')
+      
+      // Restore the version
+      await restoreVersion(versionId)
+      
+      // Reload all data to get the restored state
+      await refreshData()
+      
+      // Validate that we have at least 2 tiers after restoration
+      const currentTiersResponse = await tierAPI.getAllTiersWithCards()
+      const currentTiers = currentTiersResponse.data.data || currentTiersResponse.data
+      if (!currentTiers || currentTiers.length < 2) {
+        console.warn('Version restoration resulted in less than 2 tiers. Backend should have created default tiers.')
+        setError('Warning: Version restored but board has insufficient tiers. Default tiers should have been created.')
+        setTimeout(() => setError(null), 5000)
+      } else {
+        // Show success message
+        setError('Version restored successfully!')
+        setTimeout(() => setError(null), 3000)
+      }
+      
+      // Close version history modal if open
+      setIsVersionHistoryOpen(false)
+      
+      console.log('Version restored successfully')
+    } catch (err) {
+      console.error('Failed to restore version:', err)
+      setError('Failed to restore version. Please try again.')
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      // Clear loading state
+      setLoading(prev => ({ ...prev, versions: false }))
+    }
   }
 
   // Check if a card references a deleted source item
   const isCardFromDeletedSource = (card) => {
-    // Check if this card matches any current source item
+    // Only check cards that are from source areas (competitor, page, personas)
+    if (!(card.type === 'competitor' || card.type === 'page' || card.type === 'personas')) {
+      return false
+    }
+
+    // Get all current source cards
     const allSourceCards = [
-      ...sourceCards.competitors,
-      ...sourceCards.pages,
-      ...sourceCards.personas
+      ...(sourceCards.competitors || []),
+      ...(sourceCards.pages || []),
+      ...(sourceCards.personas || [])
     ]
     
-    // A card is from a deleted source if it has the same text and type as a source item
-    // but that source item no longer exists
-    return allSourceCards.some(sourceCard => 
+    // Check if there's a matching source card with the same text and type
+    const matchingSourceCard = allSourceCards.find(sourceCard => 
       sourceCard.text === card.text && sourceCard.type === card.type
-    ) === false && (
-      card.type === 'competitor' || 
-      card.type === 'page' || 
-      card.type === 'personas'
     )
+    
+    // If no matching source card is found, this card references a deleted source item
+    return !matchingSourceCard
   }
 
   // Check if a card is in the source area (not in tiers)
   const isCardInSourceArea = (card) => {
     // Check if this card is in any source area
     const allSourceCards = [
-      ...sourceCards.competitors,
-      ...sourceCards.pages,
-      ...sourceCards.personas
+      ...(sourceCards.competitors || []),
+      ...(sourceCards.pages || []),
+      ...(sourceCards.personas || [])
     ]
     
     // A card is in source area if:
     // 1. It has a sourceCategory property, OR
     // 2. Its ID matches a source card ID
-    return card.sourceCategory || allSourceCards.some(sourceCard => sourceCard.id === card.id)
+    return card.sourceCategory || (allSourceCards || []).some(sourceCard => sourceCard.id === card.id)
   }
 
   // Check if a version has deleted source items
   const versionHasDeletedItems = (version) => {
     const allSourceCards = [
-      ...sourceCards.competitors,
-      ...sourceCards.pages,
-      ...sourceCards.personas
+      ...(sourceCards.competitors || []),
+      ...(sourceCards.pages || []),
+      ...(sourceCards.personas || [])
     ]
     
-    return version.tiers.some(tier => 
-      tier.cards.some(card => {
+    return (version.tiers || []).some(tier => 
+      (tier.cards || []).some(card => {
+        // Only check cards that are from source areas
         if (card.type === 'competitor' || card.type === 'page' || card.type === 'personas') {
-          return !allSourceCards.some(sourceCard => 
+          // Check if there's a matching source card with the same text and type
+          const matchingSourceCard = allSourceCards.find(sourceCard => 
             sourceCard.text === card.text && sourceCard.type === card.type
           )
+          
+          // If no matching source card is found, this card references a deleted source item
+          return !matchingSourceCard
         }
         return false
       })
@@ -240,117 +226,102 @@ const TierBoard = () => {
     setTiers(prevTiers => 
       prevTiers.map(tier => ({
         ...tier,
-        cards: tier.cards.filter(card => 
+        cards: (tier.cards || []).filter(card => 
           !(card.text === deletedSourceCard.text && card.type === deletedSourceCard.type)
         )
       }))
     )
   }
 
-  const moveTierUp = (tierId) => {
-    const tierIndex = tiers.findIndex(tier => tier.id === tierId)
-    if (tierIndex > 0) {
-      const newTiers = [...tiers]
-      // Store the tiers we want to swap
-      const currentTier = newTiers[tierIndex]
-      const tierAbove = newTiers[tierIndex - 1]
-      // Swap them
-      newTiers[tierIndex - 1] = currentTier
-      newTiers[tierIndex] = tierAbove
-      setTiers(newTiers)
-      
-      // Save version after moving tier
-      saveVersion(`Moved tier ${currentTier.name} up`)
+  const moveTierUp = async (tierId) => {
+    try {
+      await moveTierPosition(tierId, 'up')
+      await saveVersion(`Moved tier up`)
+    } catch (err) {
+      console.error('Failed to move tier up:', err)
     }
   }
 
-  const moveTierDown = (tierId) => {
-    const tierIndex = tiers.findIndex(tier => tier.id === tierId)
-    if (tierIndex < tiers.length - 1) {
-      const newTiers = [...tiers]
-      // Store the tiers we want to swap
-      const currentTier = newTiers[tierIndex]
-      const tierBelow = newTiers[tierIndex + 1]
-      // Swap them
-      newTiers[tierIndex] = tierBelow
-      newTiers[tierIndex + 1] = currentTier
-      setTiers(newTiers)
-      
-      // Save version after moving tier
-      saveVersion(`Moved tier ${currentTier.name} down`)
+  const moveTierDown = async (tierId) => {
+    try {
+      await moveTierPosition(tierId, 'down')
+      await saveVersion(`Moved tier down`)
+    } catch (err) {
+      console.error('Failed to move tier down:', err)
     }
   }
 
   const addCard = (tierId) => {
+    console.log('🔍 addCard called with tierId:', tierId)
+    console.log('🔍 Current tiers before addCard:', tiers)
+    console.log('🔍 Current tiers length:', tiers?.length)
+    console.log('🔍 About to set selectedTierId and open modal...')
     setSelectedTierId(tierId)
     setIsModalOpen(true)
+    console.log('🔍 Modal should now be open')
   }
 
   const importCards = (tierId, sourceType = null) => {
+    console.log('🔍 importCards called with tierId:', tierId, 'sourceType:', sourceType)
     setSelectedTierForImport(tierId)
     setSelectedSourceType(sourceType)
     setIsImportCardsModalOpen(true)
   }
 
   const handleCreateCard = async (cardData) => {
-    if (!selectedTierId) return
-
-    // Generate a unique ID for the new card
-    const newCard = {
-      id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      text: cardData.text,
-      type: cardData.type
+    console.log('🔍 handleCreateCard called with:', cardData)
+    console.log('🔍 selectedTierId:', selectedTierId)
+    console.log('🔍 Current tiers before handleCreateCard:', tiers)
+    console.log('🔍 Current tiers length:', tiers?.length)
+    
+    if (!selectedTierId) {
+      console.log('🔍 No selectedTierId, returning early')
+      return
     }
 
-    // Add the card to the selected tier
-    setTiers(prevTiers => 
-      prevTiers.map(tier => 
-        tier.id === selectedTierId 
-          ? { ...tier, cards: [...tier.cards, newCard] }
-          : tier
-      )
-    )
-    
-    // Save version after creating card
-    const tierName = tiers.find(t => t.id === selectedTierId)?.name || ''
-    saveVersion(`Added card "${cardData.text}" to tier ${tierName}`)
+    try {
+      console.log('🔍 About to call createCard with tierId:', selectedTierId)
+      await createCard({
+        ...cardData,
+        tierId: selectedTierId
+      })
+      
+      console.log('🔍 createCard completed successfully')
+      console.log('🔍 Current tiers after createCard:', tiers)
+      console.log('🔍 Current tiers length after createCard:', tiers?.length)
+      
+      // Don't save version immediately - let the user save manually or auto-save later
+      // This prevents race conditions and state corruption
+    } catch (err) {
+      console.error('🔍 Failed to create card:', err)
+    }
   }
 
   const handleImportCards = async (selectedCardsData) => {
     if (!selectedTierForImport) return
 
-    // Find the target tier
-    const targetTier = tiers.find(tier => tier.id === selectedTierForImport)
-    if (!targetTier) return
-
-    // Create new cards from source cards
-    const newCards = selectedCardsData.map(selection => {
-      const sourceCard = sourceCards[selection.sourceCategory].find(
-        card => card.id === selection.cardId
-      )
+    try {
+      // Extract just the card IDs from the selected cards data
+      const sourceCardIds = selectedCardsData.map(selection => selection.cardId)
       
-      if (!sourceCard) return null
-
-      return {
-        ...sourceCard,
-        id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // New ID for tier
-        sourceCategory: undefined // Remove source category
-      }
-    }).filter(Boolean)
-
-    // Add the cards to the target tier
-    setTiers(prevTiers => 
-      prevTiers.map(tier => 
-        tier.id === selectedTierForImport 
-          ? { ...tier, cards: [...tier.cards, ...newCards] }
-          : tier
-      )
-    )
-    
-    // Save version after importing cards
-    const tierName = targetTier.name
-    const cardNames = newCards.map(card => card.text).join(', ')
-    saveVersion(`Imported ${newCards.length} cards (${cardNames}) to tier ${tierName}`)
+      await importCardsToTier({
+        tierId: selectedTierForImport,
+        sourceCardIds: sourceCardIds
+      })
+      
+      // Save version after importing cards
+      const targetTier = tiers.find(tier => tier.id === selectedTierForImport)
+      const tierName = targetTier?.name || ''
+      const cardNames = selectedCardsData.map(selection => {
+        const sourceCard = (sourceCards[selection.sourceCategory] || []).find(
+          card => card.id === selection.cardId
+        )
+        return sourceCard?.text || ''
+      }).join(', ')
+      await saveVersion(`Imported ${selectedCardsData.length} cards (${cardNames}) to tier ${tierName}`)
+    } catch (err) {
+      console.error('Failed to import cards:', err)
+    }
   }
 
   const closeModal = () => {
@@ -377,132 +348,56 @@ const TierBoard = () => {
     setDraggedCard(null)
   }
 
-  const handleMoveCard = (cardData, targetTierId, dropPosition) => {
+  const handleMoveCard = async (cardData, targetTierId, dropPosition) => {
     if (!cardData) return
 
-    // Check if card is from source area
-    const isFromSource = cardData.sourceCategory
-    
-    if (isFromSource) {
-      // Moving from source area to tier
-      const targetTier = tiers.find(tier => tier.id === targetTierId)
-      if (!targetTier) return
-
-      // Create a copy of the card for the tier (keep original in source)
-      const newCard = {
-        ...cardData,
-        id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // New ID for tier
-        sourceCategory: undefined // Remove source category
-      }
-
-      let newCards
+    try {
+      // Convert drop position string to integer position
+      let position = 0; // default to start
+      
       if (dropPosition === 'start') {
-        newCards = [newCard, ...targetTier.cards]
+        position = 0;
       } else if (dropPosition === 'middle') {
-        const middleIndex = Math.floor(targetTier.cards.length / 2)
-        newCards = [
-          ...targetTier.cards.slice(0, middleIndex),
-          newCard,
-          ...targetTier.cards.slice(middleIndex)
-        ]
-      } else { // 'end'
-        newCards = [...targetTier.cards, newCard]
+        // Get the middle position of the target tier
+        const targetTier = tiers.find(tier => tier.id === targetTierId);
+        const cardCount = targetTier?.cards?.length || 0;
+        position = Math.floor(cardCount / 2);
+      } else if (dropPosition === 'end') {
+        // Get the end position of the target tier
+        const targetTier = tiers.find(tier => tier.id === targetTierId);
+        const cardCount = targetTier?.cards?.length || 0;
+        position = cardCount;
       }
-
-      const updatedTargetTier = {
-        ...targetTier,
-        cards: newCards
+      
+      // Check if card is from source area
+      const isFromSource = cardData.sourceCategory
+      
+      if (isFromSource) {
+        // Moving from source area to tier - create new card
+        await createCard({
+          ...cardData,
+          tierId: targetTierId,
+          position: position
+        })
+      } else {
+        // Moving between tiers
+        await moveCard(cardData.id, {
+          targetTierId,
+          position: position
+        })
       }
-
-      // Update only the target tier (source card stays in source)
-      setTiers(prevTiers => 
-        prevTiers.map(tier => 
-          tier.id === targetTier.id ? updatedTargetTier : tier
-        )
+      
+      // Save version after moving card
+      const sourceTier = tiers.find(tier => 
+        (tier?.cards || []).some(card => card.id === cardData.id)
       )
-      return
+      const targetTier = tiers.find(tier => tier.id === targetTierId)
+      const sourceTierName = sourceTier?.name || 'source'
+      const targetTierName = targetTier?.name || ''
+      await saveVersion(`Moved card "${cardData.text}" from ${sourceTierName} to ${targetTierName}`)
+    } catch (err) {
+      console.error('Failed to move card:', err)
     }
-
-    // Original logic for moving between tiers
-    const sourceTier = tiers.find(tier => 
-      tier.cards.some(card => card.id === cardData.id)
-    )
-    
-    if (!sourceTier) return
-
-    // Remove card from source tier
-    const updatedSourceTier = {
-      ...sourceTier,
-      cards: sourceTier.cards.filter(card => card.id !== cardData.id)
-    }
-
-    // Find target tier and add card
-    const targetTier = tiers.find(tier => tier.id === targetTierId)
-    if (!targetTier) return
-
-    let updatedTargetTier
-    
-    if (sourceTier.id === targetTier.id) {
-      // Moving within the same tier - handle reordering
-      const cardIndex = sourceTier.cards.findIndex(card => card.id === cardData.id)
-      const otherCards = sourceTier.cards.filter(card => card.id !== cardData.id)
-      
-      let newCards
-      if (dropPosition === 'start') {
-        newCards = [cardData, ...otherCards]
-      } else if (dropPosition === 'middle') {
-        const middleIndex = Math.floor(otherCards.length / 2)
-        newCards = [
-          ...otherCards.slice(0, middleIndex),
-          cardData,
-          ...otherCards.slice(middleIndex)
-        ]
-      } else { // 'end'
-        newCards = [...otherCards, cardData]
-      }
-      
-      updatedTargetTier = {
-        ...targetTier,
-        cards: newCards
-      }
-    } else {
-      // Moving between different tiers
-      let newCards
-      if (dropPosition === 'start') {
-        newCards = [cardData, ...targetTier.cards]
-      } else if (dropPosition === 'middle') {
-        const middleIndex = Math.floor(targetTier.cards.length / 2)
-        newCards = [
-          ...targetTier.cards.slice(0, middleIndex),
-          cardData,
-          ...targetTier.cards.slice(middleIndex)
-        ]
-      } else { // 'end'
-        newCards = [...targetTier.cards, cardData]
-      }
-      
-      updatedTargetTier = {
-        ...targetTier,
-        cards: newCards
-      }
-    }
-
-    // Update tiers state
-    setTiers(prevTiers => 
-      prevTiers.map(tier => {
-        if (tier.id === sourceTier.id && sourceTier.id !== targetTier.id) {
-          return updatedSourceTier
-        } else if (tier.id === targetTier.id) {
-          return updatedTargetTier
-        }
-        return tier
-      })
-    )
-    
-    // Save version after moving card
-    const sourceTierName = sourceTier.name
-    const targetTierName = targetTier.name
-    saveVersion(`Moved card "${cardData.text}" from tier ${sourceTierName} to ${targetTierName}`)
   }
 
   // Source card functions
@@ -514,22 +409,17 @@ const TierBoard = () => {
   const handleCreateSourceCard = async (cardData) => {
     if (!selectedSourceType) return
 
-    const newCard = {
-      id: `source-${selectedSourceType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      text: cardData.text,
-      type: cardData.type,
-      subtype: cardData.subtype,
-      sourceCategory: selectedSourceType,
-      imageUrl: cardData.imageUrl || null
+    try {
+      await createSourceCard({
+        ...cardData,
+        sourceCategory: selectedSourceType
+      })
+      
+      // Save version after creating source card
+      await saveVersion(`Added source card "${cardData.text}" to ${selectedSourceType}`)
+    } catch (err) {
+      console.error('Failed to create source card:', err)
     }
-
-    setSourceCards(prevCards => ({
-      ...prevCards,
-      [selectedSourceType]: [...(prevCards[selectedSourceType] || []), newCard]
-    }))
-    
-    // Save version after creating source card
-    saveVersion(`Added source card "${cardData.text}" to ${selectedSourceType}`)
   }
 
   const closeSourceModal = () => {
@@ -579,63 +469,35 @@ const TierBoard = () => {
     setIsDeleteCardModalOpen(true)
   }
 
-  const handleDuplicateCard = (card) => {
-    // Find which tier or source area contains this card
-    let foundInSource = false
-    let sourceCategory = null
+  const handleDuplicateCard = async (card) => {
+    try {
+      // Find which tier or source area contains this card
+      let foundInSource = false
+      let sourceCategory = null
 
-    // Check source areas first
-    for (const [category, cards] of Object.entries(sourceCards)) {
-      if (cards.some(c => c.id === card.id)) {
-        foundInSource = true
-        sourceCategory = category
-        break
-      }
-    }
-
-    if (foundInSource) {
-      // Duplicate in source area
-      const newCard = {
-        ...card,
-        id: `source-${sourceCategory}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        text: `${card.text} Copy`,
-        comments: [] // Don't copy comments
+      // Check source areas first
+      for (const [category, cards] of Object.entries(sourceCards)) {
+        if ((cards || []).some(c => c.id === card.id)) {
+          foundInSource = true
+          sourceCategory = category
+          break
+        }
       }
 
-      setSourceCards(prevCards => ({
-        ...prevCards,
-        [sourceCategory]: [...prevCards[sourceCategory], newCard]
-      }))
-    } else {
-      // Duplicate in tier
-      const tierWithCard = tiers.find(tier => 
-        tier.cards.some(c => c.id === card.id)
-      )
-
-      if (tierWithCard) {
-        const newCard = {
+      if (foundInSource) {
+        // Duplicate in source area
+        await createSourceCard({
           ...card,
-          id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           text: `${card.text} Copy`,
+          sourceCategory,
           comments: [] // Don't copy comments
-        }
-
-        const cardIndex = tierWithCard.cards.findIndex(c => c.id === card.id)
-        const updatedTier = {
-          ...tierWithCard,
-          cards: [
-            ...tierWithCard.cards.slice(0, cardIndex + 1),
-            newCard,
-            ...tierWithCard.cards.slice(cardIndex + 1)
-          ]
-        }
-
-        setTiers(prevTiers =>
-          prevTiers.map(tier =>
-            tier.id === tierWithCard.id ? updatedTier : tier
-          )
-        )
+        })
+      } else {
+        // Duplicate in tier
+        await duplicateCard(card.id)
       }
+    } catch (err) {
+      console.error('Failed to duplicate card:', err)
     }
   }
 
@@ -644,9 +506,12 @@ const TierBoard = () => {
     setIsAddCommentModalOpen(true)
   }
 
-  const handleToggleCardHidden = (card) => {
-    const isCurrentlyHidden = card.hidden || false
-    updateCardProperty(card, { hidden: !isCurrentlyHidden })
+  const handleToggleCardHidden = async (card) => {
+    try {
+      await toggleCardHidden(card.id)
+    } catch (err) {
+      console.error('Failed to toggle card hidden status:', err)
+    }
   }
 
   const handleChangeCardImage = (card) => {
@@ -654,8 +519,12 @@ const TierBoard = () => {
     setIsChangeImageModalOpen(true)
   }
 
-  const handleRemoveImage = (card) => {
-    updateCardProperty(card, { imageUrl: null, image: null })
+  const handleRemoveImage = async (card) => {
+    try {
+      await updateCardProperty(card, { imageUrl: null, image: null })
+    } catch (err) {
+      console.error('Failed to remove image:', err)
+    }
   }
 
   const handlePickAnotherPersona = (card) => {
@@ -663,130 +532,137 @@ const TierBoard = () => {
     setIsPickAnotherPersonaModalOpen(true)
   }
 
-  const handleConfirmPersonaChange = (currentCard, newPersona) => {
-    // Update the card with the new persona data while preserving existing properties
-    updateCardProperty(currentCard, {
-      id: newPersona.id,
-      text: newPersona.text,
-      type: newPersona.type,
-      subtype: newPersona.subtype,
-      imageUrl: newPersona.imageUrl,
-      image: newPersona.image,
-      sourceCategory: newPersona.sourceCategory,
-      // Preserve existing properties that shouldn't be overwritten
-      comments: currentCard.comments,
-      hidden: currentCard.hidden
-    })
-    
-    // Save version after changing persona
-    saveVersion(`Changed persona from "${currentCard.text}" to "${newPersona.text}"`)
+  const handleConfirmPersonaChange = async (currentCard, newPersona) => {
+    try {
+      // Update the card with the new persona data while preserving existing properties
+      await updateCardProperty(currentCard, {
+        id: newPersona.id,
+        text: newPersona.text,
+        type: newPersona.type,
+        subtype: newPersona.subtype,
+        imageUrl: newPersona.imageUrl,
+        image: newPersona.image,
+        sourceCategory: newPersona.sourceCategory,
+        // Preserve existing properties that shouldn't be overwritten
+        comments: currentCard.comments,
+        hidden: currentCard.hidden
+      })
+      
+      // Save version after changing persona
+      await saveVersion(`Changed persona from "${currentCard.text}" to "${newPersona.text}"`)
+    } catch (err) {
+      console.error('Failed to change persona:', err)
+    }
   }
 
   const handleSaveImage = async (card, newImageUrl) => {
-    updateCardProperty(card, { imageUrl: newImageUrl })
+    try {
+      await updateCardProperty(card, { imageUrl: newImageUrl })
+    } catch (err) {
+      console.error('Failed to save image:', err)
+    }
   }
 
   // Save edited card
-  const handleSaveEditedCard = (card, updates) => {
-    updateCardProperty(card, updates)
+  const handleSaveEditedCard = async (card, updates) => {
+    try {
+      await updateCardProperty(card, updates)
+    } catch (err) {
+      console.error('Failed to save edited card:', err)
+    }
   }
 
   // Add comment to card
-  const handleSaveComment = (card, comment, updatedComments = null) => {
-    if (updatedComments !== null) {
-      // This is a comment deletion - use the provided updated comments array
-      updateCardProperty(card, { comments: updatedComments })
-    } else if (comment) {
-      // This is adding a new comment
-      const currentComments = card.comments || []
-      const newComments = [...currentComments, comment]
-      updateCardProperty(card, { comments: newComments })
+  const handleSaveComment = async (card, comment, updatedComments = null) => {
+    try {
+      if (updatedComments !== null) {
+        // This is a comment deletion - find the deleted comment and use the proper API
+        const originalComments = card.comments || []
+        const deletedComment = originalComments.find(c => !updatedComments.some(uc => uc.id === c.id))
+        
+        if (deletedComment) {
+          // Use the proper comment deletion API
+          await deleteComment(deletedComment.id, card.id)
+        }
+      } else if (comment) {
+        // This is adding a new comment
+        await createComment({
+          cardId: card.id,
+          text: comment, // Changed from 'content' to 'text' to match backend validation
+          card: card
+        })
+      }
+    } catch (err) {
+      console.error('Failed to save comment:', err)
     }
   }
 
   // Confirm delete card
-  const handleConfirmDeleteCard = (card) => {
-    // Find which tier or source area contains this card and remove it
-    let foundInSource = false
-    let sourceCategory = null
+  const handleConfirmDeleteCard = async (card) => {
+    try {
+      // Find which tier or source area contains this card and remove it
+      let foundInSource = false
+      let sourceCategory = null
 
-    // Check source areas first
-    for (const [category, cards] of Object.entries(sourceCards)) {
-      if (cards.some(c => c.id === card.id)) {
-        foundInSource = true
-        sourceCategory = category
-        break
-      }
-    }
-
-    if (foundInSource) {
-      // Remove from source area and cascade delete from tiers
-      setSourceCards(prevCards => ({
-        ...prevCards,
-        [sourceCategory]: prevCards[sourceCategory].filter(c => c.id !== card.id)
-      }))
-      
-      // Cascade delete: remove all tier cards that reference this source item
-      cascadeDeleteFromTiers(card)
-      
-      // Save version after cascade delete
-      saveVersion(`Deleted source item "${card.text}" and related tier cards`)
-    } else {
-      // Remove from tier
-      const tierWithCard = tiers.find(tier => 
-        tier.cards.some(c => c.id === card.id)
-      )
-
-      if (tierWithCard) {
-        const updatedTier = {
-          ...tierWithCard,
-          cards: tierWithCard.cards.filter(c => c.id !== card.id)
+      // Check source areas first
+      for (const [category, cards] of Object.entries(sourceCards)) {
+        if ((cards || []).some(c => c.id === card.id)) {
+          foundInSource = true
+          sourceCategory = category
+          break
         }
+      }
 
-        setTiers(prevTiers =>
-          prevTiers.map(tier =>
-            tier.id === tierWithCard.id ? updatedTier : tier
-          )
-        )
+      if (foundInSource) {
+        // Remove from source area and cascade delete from tiers
+        await deleteSourceCard(card.id, sourceCategory)
+        
+        // Save version after cascade delete
+        await saveVersion(`Deleted source item "${card.text}" and related tier cards`)
+      } else {
+        // Remove from tier
+        await deleteCard(card.id)
         
         // Save version after tier card deletion
-        saveVersion(`Deleted card "${card.text}" from tier ${tierWithCard.name}`)
+        const tierWithCard = tiers.find(tier => 
+          (tier.cards || []).some(c => c.id === card.id)
+        )
+        const tierName = tierWithCard?.name || ''
+        await saveVersion(`Deleted card "${card.text}" from tier ${tierName}`)
       }
+    } catch (err) {
+      console.error('Failed to delete card:', err)
     }
   }
 
   // Helper function to update a card property across all locations
-  const updateCardProperty = (targetCard, updates) => {
-    // Check source areas first
-    let foundInSource = false
-    let sourceCategory = null
+  const updateCardProperty = async (targetCard, updates) => {
+    try {
+      // Check source areas first
+      let foundInSource = false
+      let sourceCategory = null
 
-    for (const [category, cards] of Object.entries(sourceCards)) {
-      if (cards.some(c => c.id === targetCard.id)) {
-        foundInSource = true
-        sourceCategory = category
-        break
+      for (const [category, cards] of Object.entries(sourceCards)) {
+        if ((cards || []).some(c => c.id === targetCard.id)) {
+          foundInSource = true
+          sourceCategory = category
+          break
+        }
       }
-    }
 
-    if (foundInSource) {
-      // Update in source area
-      setSourceCards(prevCards => ({
-        ...prevCards,
-        [sourceCategory]: prevCards[sourceCategory].map(card =>
-          card.id === targetCard.id ? { ...card, ...updates } : card
-        )
-      }))
-    } else {
-      // Update in tier
-      setTiers(prevTiers =>
-        prevTiers.map(tier => ({
-          ...tier,
-          cards: tier.cards.map(card =>
-            card.id === targetCard.id ? { ...card, ...updates } : card
-          )
-        }))
-      )
+      if (foundInSource) {
+        // Update in source area
+        await updateSourceCard(targetCard.id, {
+          ...targetCard,
+          ...updates,
+          sourceCategory
+        })
+      } else {
+        // Update in tier
+        await updateCard(targetCard.id, updates)
+      }
+    } catch (err) {
+      console.error('Failed to update card property:', err)
     }
   }
 
@@ -822,9 +698,15 @@ const TierBoard = () => {
         changeTierColor(tierId, data)
         break
       case 'duplicate':
-        duplicateTier(tierId)
+        handleDuplicateTier(tierId)
         break
       case 'delete':
+        // Check if deletion is allowed (minimum 2 tiers requirement)
+        if (tiers.length <= 2) {
+          setError('Cannot delete tier. Your Tier Listing board must have at least 2 tiers.')
+          setTimeout(() => setError(null), 5000) // Clear error message after 5 seconds
+          return
+        }
         setSelectedTierForEdit(tier)
         setIsDeleteModalOpen(true)
         break
@@ -833,147 +715,258 @@ const TierBoard = () => {
     }
   }
 
-  const changeTierColor = (tierId, newColor) => {
-    setTiers(prevTiers =>
-      prevTiers.map(tier =>
-        tier.id === tierId
-          ? { ...tier, color: newColor }
-          : tier
-      )
-    )
+  const changeTierColor = async (tierId, newColor) => {
+    try {
+      await updateTier(tierId, { color: newColor })
+    } catch (err) {
+      console.error('Failed to change tier color:', err)
+    }
   }
 
   const saveTierName = async (newName) => {
     if (!selectedTierForEdit) return
 
-    setTiers(prevTiers =>
-      prevTiers.map(tier =>
-        tier.id === selectedTierForEdit.id
-          ? { ...tier, name: newName }
-          : tier
-      )
-    )
-    
-    // Save version after renaming tier
-    saveVersion(`Renamed tier from "${selectedTierForEdit.name}" to "${newName}"`)
-  }
-
-  const duplicateTier = (tierId) => {
-    const tierToDuplicate = tiers.find(t => t.id === tierId)
-    if (!tierToDuplicate) return
-
-    const newTier = {
-      id: `tier-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: `${tierToDuplicate.name} Copy`,
-      color: tierToDuplicate.color,
-      cards: tierToDuplicate.cards.map(card => ({
-        ...card,
-        id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      }))
+    try {
+      await updateTier(selectedTierForEdit.id, { name: newName })
+      
+      // Save version after renaming tier
+      await saveVersion(`Renamed tier from "${selectedTierForEdit.name}" to "${newName}"`)
+    } catch (err) {
+      console.error('Failed to save tier name:', err)
     }
-
-    const tierIndex = tiers.findIndex(t => t.id === tierId)
-    const newTiers = [...tiers]
-    newTiers.splice(tierIndex + 1, 0, newTier)
-    setTiers(newTiers)
-
-    // Show success message
-    setTimeout(() => {
-      alert('Tier duplicated successfully.')
-    }, 100)
   }
 
-  const deleteTier = async () => {
+  const handleDuplicateTier = async (tierId) => {
+    try {
+      await duplicateTier(tierId)
+      setError('Tier duplicated successfully!')
+      setTimeout(() => setError(null), 3000) // Clear success message after 3 seconds
+    } catch (err) {
+      console.error('Failed to duplicate tier:', err)
+    }
+  }
+
+  const handleDeleteTier = async () => {
     if (!selectedTierForEdit) return
 
     // Don't allow deleting if only 2 tiers remain (minimum requirement)
     if (tiers.length <= 2) {
-      alert('Cannot delete tier. Your Tier Listing board must have at least 2 tiers.')
+      setError('Cannot delete tier. Your Tier Listing board must have at least 2 tiers.')
+      setTimeout(() => setError(null), 5000) // Clear error message after 5 seconds
       return
     }
 
-    setTiers(prevTiers =>
-      prevTiers.filter(tier => tier.id !== selectedTierForEdit.id)
-    )
+    // If the tier has cards, the modal will handle the options
+    // Otherwise, proceed with direct deletion (though the modal now handles this logic)
+    // This function is now primarily a trigger for the modal
+    setIsDeleteModalOpen(true)
+  }
 
-    // Show success message
-    setTimeout(() => {
-      alert('Tier deleted successfully.')
-    }, 100)
+  // Handle deleting all cards in a tier and then deleting the tier
+  const handleDeleteCardsAndTier = async () => {
+    if (!selectedTierForEdit) return
+
+    // Don't allow deleting if only 2 tiers remain (minimum requirement)
+    if (tiers.length <= 2) {
+      setError('Cannot delete tier. Your Tier Listing board must have at least 2 tiers.')
+      setTimeout(() => setError(null), 5000) // Clear error message after 5 seconds
+      return
+    }
+
+    try {
+      await deleteCardsAndTier(selectedTierForEdit.id)
+      await saveVersion(`Deleted all cards in tier "${selectedTierForEdit.name}" and deleted the tier`)
+      setError('Cards and tier deleted successfully!')
+      setTimeout(() => setError(null), 3000) // Clear success message after 3 seconds
+    } catch (err) {
+      console.error('Failed to delete cards and tier:', err)
+      throw err // Re-throw to let the modal handle the error
+    }
   }
 
   // Add new tier functionality
-  const addTierBelow = (currentTierId) => {
-    console.log('Adding tier below:', currentTierId) // Debug log
-    
-    // Available colors to cycle through
-    const availableColors = [
-      'bg-gray-300',
-      'bg-blue-200', 
-      'bg-yellow-200',
-      'bg-green-200',
-      'bg-red-200',
-      'bg-purple-200',
-      'bg-orange-200',
-      'bg-pink-200'
-    ]
-
-    // Generate next tier name
-    const getNextTierName = () => {
-      const usedNames = tiers.map(tier => tier.name.toUpperCase())
+  const addTierBelow = async (currentTierId) => {
+    try {
+      console.log('🔍 addTierBelow called with currentTierId:', currentTierId)
+      console.log('🔍 Current tiers:', tiers)
       
-      // Try letters A-Z first
-      for (let i = 65; i <= 90; i++) { // A-Z ASCII codes
-        const letter = String.fromCharCode(i)
-        if (!usedNames.includes(letter)) {
-          return letter
+      // Available colors to cycle through
+      const availableColors = [
+        'bg-gray-300',
+        'bg-blue-200', 
+        'bg-yellow-200',
+        'bg-green-200',
+        'bg-red-200',
+        'bg-purple-200',
+        'bg-orange-200',
+        'bg-pink-200'
+      ]
+
+      // Generate next tier name
+      const getNextTierName = () => {
+        const usedNames = (tiers || []).map(tier => tier?.name?.toUpperCase() || '')
+        
+        // Try letters A-Z first
+        for (let i = 65; i <= 90; i++) { // A-Z ASCII codes
+          const letter = String.fromCharCode(i)
+          if (!usedNames.includes(letter)) {
+            return letter
+          }
         }
+        
+        // If all letters are used, use "New Tier X"
+        let counter = 1
+        while (usedNames.includes(`NEW TIER ${counter}`)) {
+          counter++
+        }
+        return `New Tier ${counter}`
       }
-      
-      // If all letters are used, use "New Tier X"
-      let counter = 1
-      while (usedNames.includes(`NEW TIER ${counter}`)) {
-        counter++
+
+      // Find the current tier to get its position
+      const currentTier = tiers.find(tier => tier.id === currentTierId)
+      if (!currentTier) {
+        console.error('🔍 Current tier not found:', currentTierId)
+        throw new Error('Current tier not found')
       }
-      return `New Tier ${counter}`
+
+      console.log('🔍 Current tier found:', currentTier)
+      console.log('🔍 Current tier position:', currentTier.position)
+
+      // Calculate the new position (after the current tier)
+      const newPosition = currentTier.position + 1
+      console.log('🔍 Calculated new position:', newPosition)
+
+      // Pick color (cycle through available colors based on tier count)
+      const colorIndex = tiers.length % availableColors.length
+      const newColor = availableColors[colorIndex]
+
+      // Create new tier data with integer position
+      const newTierData = {
+        name: getNextTierName(),
+        color: newColor,
+        position: newPosition
+      }
+
+      console.log('🔍 New tier data to send:', newTierData)
+
+      await createTier(newTierData)
+
+      // Save version after adding tier
+      await saveVersion(`Added new tier "${newTierData.name}"`)
+    } catch (err) {
+      console.error('🔍 Failed to add tier:', err)
     }
-
-    // Pick color (cycle through available colors based on tier count)
-    const colorIndex = tiers.length % availableColors.length
-    const newColor = availableColors[colorIndex]
-
-    // Create new tier
-    const newTier = {
-      id: `tier-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: getNextTierName(),
-      color: newColor,
-      cards: []
-    }
-
-    // Find current tier index and insert after it
-    const currentTierIndex = tiers.findIndex(tier => tier.id === currentTierId)
-    if (currentTierIndex === -1) {
-      console.error('Current tier not found:', currentTierId)
-      return
-    }
-
-    setTiers(prevTiers => {
-      const newTiers = [...prevTiers]
-      newTiers.splice(currentTierIndex + 1, 0, newTier) // Insert after current tier
-      return newTiers
-    })
-
-    // Save version after adding tier
-    saveVersion(`Added new tier "${newTier.name}"`)
-
-    console.log('New tier added successfully!') // Debug log
   }
 
-  const selectedTier = tiers.find(tier => tier.id === selectedTierId)
-  const tierForOptionsMenu = tiers.find(tier => tier.id === tierOptionsMenu.tierId)
+  const selectedTier = (tiers || []).find(tier => tier?.id === selectedTierId)
+  const tierForOptionsMenu = (tiers || []).find(tier => tier?.id === tierOptionsMenu.tierId)
+
+  // Helper function to format dates in a user-friendly way
+  const formatVersionDate = (timestamp) => {
+    if (!timestamp) return 'Unknown date'
+    
+    try {
+      const date = new Date(timestamp)
+      if (isNaN(date.getTime())) return 'Invalid date'
+      
+      const now = new Date()
+      const diffInMs = now - date
+      const diffInHours = diffInMs / (1000 * 60 * 60)
+      const diffInDays = diffInMs / (1000 * 60 * 60 * 24)
+      
+      // Less than 1 hour ago
+      if (diffInHours < 1) {
+        const minutes = Math.floor(diffInMs / (1000 * 60))
+        return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`
+      }
+      
+      // Less than 24 hours ago
+      if (diffInHours < 24) {
+        const hours = Math.floor(diffInHours)
+        return `${hours} hour${hours !== 1 ? 's' : ''} ago`
+      }
+      
+      // Less than 7 days ago
+      if (diffInDays < 7) {
+        const days = Math.floor(diffInDays)
+        if (days === 1) {
+          return `Yesterday at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        }
+        return `${days} days ago`
+      }
+      
+      // More than 7 days ago - show full date
+      return date.toLocaleDateString([], { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    } catch (error) {
+      console.error('Error formatting date:', error)
+      return 'Invalid date'
+    }
+  }
 
   return (
     <div className="space-y-6">
+      {/* Error Display */}
+      {error && (
+        <div className={`border rounded-lg p-4 mb-4 ${
+          error.toLowerCase().includes('successfully') 
+            ? 'bg-green-50 border-green-200' 
+            : 'bg-red-50 border-red-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {error.toLowerCase().includes('successfully') ? (
+                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+              <span className={`font-medium ${
+                error.toLowerCase().includes('successfully') 
+                  ? 'text-green-800' 
+                  : 'text-red-800'
+              }`}>
+                {error.toLowerCase().includes('successfully') ? error : `Error loading data: ${error}`}
+              </span>
+            </div>
+            <button
+              onClick={clearError}
+              className={`font-medium ${
+                error.toLowerCase().includes('successfully') 
+                  ? 'text-green-600 hover:text-green-800' 
+                  : 'text-red-600 hover:text-red-800'
+              }`}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Indicator */}
+      {(loading.tiers || loading.sourceCards || loading.versions) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span className="text-blue-800 font-medium">
+              {loading.tiers && loading.sourceCards && loading.versions 
+                ? 'Loading all data...' 
+                : 'Loading data...'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Source Area - Above Tier Board */}
       <SourceArea 
         sourceCards={sourceCards}
@@ -1014,9 +1007,19 @@ const TierBoard = () => {
             
             {/* Clear Board Button */}
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (window.confirm('Are you sure you want to clear all cards from the board?')) {
-                  setTiers(prevTiers => prevTiers.map(tier => ({ ...tier, cards: [] })))
+                  try {
+                    // Clear all tiers
+                    for (const tier of tiers) {
+                      await clearTierCards(tier.id)
+                    }
+                    setError('Board cleared successfully!')
+                    setTimeout(() => setError(null), 3000) // Clear success message after 3 seconds
+                  } catch (err) {
+                    console.error('Failed to clear board:', err)
+                    alert('Failed to clear board.')
+                  }
                 }
               }}
               className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
@@ -1030,8 +1033,8 @@ const TierBoard = () => {
         </div>
         
         {/* Warning message for deleted source items */}
-        {tiers.some(tier => 
-          tier.cards.some(card => isCardFromDeletedSource(card))
+        {(tiers || []).some(tier => 
+          (tier?.cards || []).some(card => isCardFromDeletedSource(card))
         ) && (
           <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-center gap-2">
@@ -1045,13 +1048,44 @@ const TierBoard = () => {
           </div>
         )}
 
-        <div className="space-y-2">
-          {tiers.map((tier, index) => (
-            <TierRow
-              key={tier.id}
-              tier={tier}
-              isFirst={index === 0}
-              isLast={index === tiers.length - 1}
+        {/* No Data State */}
+        {!loading.tiers && !loading.versions && (!tiers || tiers.length === 0) && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">No tiers available</h3>
+                <p className="text-gray-500">Create your first tier to get started.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Loading State for Tiers */}
+        {(loading.tiers || loading.versions) && (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="border border-gray-300 rounded-lg p-4 bg-gray-50 animate-pulse">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-12 bg-gray-200 rounded"></div>
+                  <div className="flex-1 h-12 bg-gray-200 rounded"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Tiers List */}
+        {!loading.tiers && !loading.versions && tiers && tiers.length > 0 && (
+          <div className="space-y-2">
+            {tiers.map((tier, index) => (
+              <TierRow
+                key={tier?.id || index}
+                tier={tier}
+                isFirst={index === 0}
+                isLast={index === (tiers?.length || 0) - 1}
               onMoveTierUp={() => moveTierUp(tier.id)}
               onMoveTierDown={() => moveTierDown(tier.id)}
               onAddCard={() => addCard(tier.id)}
@@ -1062,12 +1096,13 @@ const TierBoard = () => {
               draggedCard={draggedCard}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
-              onAddTierBelow={() => addTierBelow(tier.id)}
+                            onAddTierBelow={() => addTierBelow(tier.id)}
               onCardRightClick={handleCardRightClick}
               isCardFromDeletedSource={isCardFromDeletedSource}
             />
           ))}
         </div>
+      )}
       </div>
 
       {/* Card Context Menu */}
@@ -1098,6 +1133,7 @@ const TierBoard = () => {
         onDuplicate={() => openTierOptions(tierOptionsMenu.tierId, 'duplicate')}
         onDelete={() => openTierOptions(tierOptionsMenu.tierId, 'delete')}
         position={tierOptionsMenu.position}
+        canDelete={tiers.length > 2} // Only allow deletion if more than 2 tiers exist
       />
 
       {/* Edit Card Modal */}
@@ -1146,7 +1182,7 @@ const TierBoard = () => {
         isOpen={isPickAnotherPersonaModalOpen}
         onClose={closePickAnotherPersonaModal}
         currentCard={selectedCardForOperation}
-        availablePersonas={sourceCards.personas.filter(p => p.id !== selectedCardForOperation?.id)}
+        availablePersonas={(sourceCards.personas || []).filter(p => p.id !== selectedCardForOperation?.id)}
         onConfirm={handleConfirmPersonaChange}
       />
 
@@ -1163,7 +1199,7 @@ const TierBoard = () => {
         isOpen={isModalOpen}
         onClose={closeModal}
         onCreateCard={handleCreateCard}
-        tierName={selectedTier?.name || ''}
+        tierName={tiers.find(t => t.id === selectedTierId)?.name || ''}
       />
 
       {/* Import Cards Modal */}
@@ -1196,7 +1232,7 @@ const TierBoard = () => {
         }}
         tierName={selectedTierForEdit?.name || ''}
         cardCount={selectedTierForEdit?.cards?.length || 0}
-        onConfirm={deleteTier}
+        onDeleteCardsAndTier={handleDeleteCardsAndTier}
       />
 
       {/* Export Modal */}
@@ -1210,9 +1246,10 @@ const TierBoard = () => {
       {/* Version History Modal */}
       {isVersionHistoryOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[999999999999]">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
+            {/* Modal Header - Fixed */}
+            <div className="p-6 border-b border-gray-200 flex-shrink-0">
+              <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Version History</h2>
                 <button
                   onClick={() => setIsVersionHistoryOpen(false)}
@@ -1223,59 +1260,75 @@ const TierBoard = () => {
                   </svg>
                 </button>
               </div>
+            </div>
 
-              <div className="flex-1 overflow-y-auto">
-                {versionHistory.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">No version history available</p>
-                ) : (
-                  <div className="space-y-3">
-                    {versionHistory.map((version, index) => (
-                      <div
-                        key={version.id}
-                        className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                          index === currentVersionIndex
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                        onClick={() => restoreVersion(index)}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <h3 className="font-medium text-gray-900">{version.description}</h3>
-                            <p className="text-sm text-gray-500 mt-1">
-                              {new Date(version.timestamp).toLocaleString()}
+            {/* Modal Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {versionHistory.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No version history available</p>
+              ) : (
+                <div className="space-y-3">
+                  {versionHistory.map((version, index) => (
+                    <div
+                      key={version.id}
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                        index === currentVersionIndex
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                      onClick={() => handleRestoreVersion(version.id)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">{version.description}</h3>
+                          <p className="text-sm text-gray-500 mt-1">
+                            {formatVersionDate(version.created_at)}
+                          </p>
+                          {versionHasDeletedItems(version) && (
+                            <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                              </svg>
+                              Contains deleted source items
                             </p>
-                            {versionHasDeletedItems(version) && (
-                              <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {index === currentVersionIndex && (
+                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                              Current
+                            </span>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRestoreVersion(version.id)
+                            }}
+                            disabled={loading.versions}
+                            className={`text-sm font-medium transition-colors ${
+                              loading.versions 
+                                ? 'text-gray-400 cursor-not-allowed' 
+                                : 'text-blue-600 hover:text-blue-800'
+                            }`}
+                          >
+                            {loading.versions ? (
+                              <div className="flex items-center gap-2">
+                                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                Contains deleted source items
-                              </p>
+                                Restoring...
+                              </div>
+                            ) : (
+                              'Restore'
                             )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {index === currentVersionIndex && (
-                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                Current
-                              </span>
-                            )}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                restoreVersion(index)
-                              }}
-                              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                            >
-                              Restore
-                            </button>
-                          </div>
+                          </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

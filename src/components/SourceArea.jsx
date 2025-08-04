@@ -14,19 +14,22 @@ const SourceArea = ({
       id: 'competitors',
       label: 'Competitors',
       addLabel: '(Add card)',
-      cards: sourceCards.competitors || []
+      cards: sourceCards.competitors || [],
+      color: 'bg-orange-100 text-orange-800 border-orange-200'
     },
     {
       id: 'pages',
       label: 'Pages',
       addLabel: '(Add page)',
-      cards: sourceCards.pages || []
+      cards: sourceCards.pages || [],
+      color: 'bg-green-100 text-green-800 border-green-200'
     },
     {
       id: 'personas',
       label: 'Personas',
       addLabel: '(Add persona)',
-      cards: sourceCards.personas || []
+      cards: sourceCards.personas || [],
+      color: 'bg-blue-100 text-blue-800 border-blue-200'
     }
   ]
 
@@ -39,8 +42,8 @@ const SourceArea = ({
           <div key={row.id} className="border border-gray-200 rounded-lg">
             <div className="flex items-center min-h-[60px]">
               {/* Row Label */}
-              <div className="flex items-center justify-center w-24 bg-gray-100 border-r border-gray-200 h-full rounded-l-lg">
-                <span className="text-sm font-medium text-gray-700">
+              <div className={`flex items-center justify-center w-24 border-r border-gray-200 h-full rounded-l-lg ${row.color}`}>
+                <span className="text-sm font-medium">
                   {row.label}
                 </span>
               </div>

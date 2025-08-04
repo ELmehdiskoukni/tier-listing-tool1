@@ -1,18 +1,19 @@
 import React, { useState } from 'react'
 
-const DeleteTierModal = ({ isOpen, onClose, tierName, cardCount, onConfirm }) => {
-  const [isDeleting, setIsDeleting] = useState(false)
+const DeleteTierModal = ({ isOpen, onClose, tierName, cardCount, onDeleteCardsAndTier }) => {
+  const [isProcessing, setIsProcessing] = useState(false)
 
   const handleDelete = async () => {
-    setIsDeleting(true)
+    setIsProcessing(true)
     
     try {
-      await onConfirm()
+      await onDeleteCardsAndTier()
       onClose()
     } catch (error) {
-      alert('Failed to delete tier. Please try again.')
+      console.error('Action failed:', error)
+      alert('Action failed. Please try again.')
     } finally {
-      setIsDeleting(false)
+      setIsProcessing(false)
     }
   }
 
@@ -33,16 +34,27 @@ const DeleteTierModal = ({ isOpen, onClose, tierName, cardCount, onConfirm }) =>
               Delete Tier "{tierName}"
             </h2>
             <p className="text-sm text-gray-500">
-              This action cannot be undone
+              This tier contains {cardCount} card{cardCount === 1 ? '' : 's'}
             </p>
           </div>
         </div>
 
         {/* Warning Message */}
-        <div className="mb-6">
-          <p className="text-gray-700 mb-3">
-            This will permanently delete tier "{tierName}" and {cardCount > 0 ? `its ${cardCount} card${cardCount === 1 ? '' : 's'}` : 'all its cards'}.
-          </p>
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <div>
+              <p className="text-red-800 font-medium mb-1">
+                ⚠️ Permanent Deletion Warning
+              </p>
+              <p className="text-red-700 text-sm">
+                This will permanently delete tier "{tierName}" and all {cardCount} card{cardCount === 1 ? '' : 's'} in it. 
+                This action cannot be undone and the data will be lost forever.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -51,16 +63,16 @@ const DeleteTierModal = ({ isOpen, onClose, tierName, cardCount, onConfirm }) =>
             type="button"
             onClick={onClose}
             className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors duration-200"
-            disabled={isDeleting}
+            disabled={isProcessing}
           >
-            Never mind
+            Cancel
           </button>
           <button
             onClick={handleDelete}
-            disabled={isDeleting}
+            disabled={isProcessing}
             className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
           >
-            {isDeleting ? 'Deleting...' : 'Yes, delete it'}
+            {isProcessing ? 'Deleting...' : 'Delete Tier & Cards'}
           </button>
         </div>
       </div>

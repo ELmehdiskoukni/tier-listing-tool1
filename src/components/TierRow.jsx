@@ -4,24 +4,25 @@ import Card from './Card'
 import ControlButtons from './ControlButtons'
 
 const TierRow = ({ 
-  tier, 
-  isFirst, 
-  isLast, 
-  onMoveTierUp, 
-  onMoveTierDown, 
-  onAddCard, 
-  onImportCards,
-  onOpenOptionsMenu,
-  onOpenOptions,
-  onMoveCard,
-  draggedCard,
-  onDragStart,
-  onDragEnd,
-  onAddTierBelow,
-  onCardRightClick, // Make sure this prop is here
-  isCardFromDeletedSource // New prop for checking deleted sources
+  tier = {}, 
+  isFirst = false, 
+  isLast = false, 
+  onMoveTierUp = () => {}, 
+  onMoveTierDown = () => {}, 
+  onAddCard = () => {}, 
+  onImportCards = () => {},
+  onOpenOptionsMenu = () => {},
+  onOpenOptions = () => {},
+  onMoveCard = () => {},
+  draggedCard = null,
+  onDragStart = () => {},
+  onDragEnd = () => {},
+  onAddTierBelow = () => {},
+  onCardRightClick = () => {}, // Make sure this prop is here
+  isCardFromDeletedSource = () => false // New prop for checking deleted sources
 }) => {
   const [showAddDropdown, setShowAddDropdown] = useState(false)
+  const [isDropdownReady, setIsDropdownReady] = useState(false)
   const optionsButtonRef = useRef(null)
   const dropdownRef = useRef(null)
   const dropdownMenuRef = useRef(null) // New ref for the portal dropdown
@@ -37,16 +38,26 @@ const TierRow = ({
       const isOutsideDropdown = dropdownMenuRef.current && !dropdownMenuRef.current.contains(event.target)
       
       if (isOutsideButton && isOutsideDropdown) {
+        console.log('🔍 Click outside detected, closing dropdown')
+        setShowAddDropdown(false)
+      }
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && showAddDropdown) {
+        console.log('🔍 Escape key pressed, closing dropdown')
         setShowAddDropdown(false)
       }
     }
 
     if (showAddDropdown) {
       document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('keydown', handleKeyDown)
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
     }
   }, [showAddDropdown])
 
@@ -75,15 +86,36 @@ const TierRow = ({
     if (optionsButtonRef.current) {
       const rect = optionsButtonRef.current.getBoundingClientRect()
       const position = {
-        top: rect.bottom + 5,
-        right: window.innerWidth - rect.right
+        top: rect.bottom + 5, // Position below the button
+        right: window.innerWidth - rect.right,
+        // Add additional positioning data for smart positioning
+        buttonTop: rect.top,
+        buttonBottom: rect.bottom,
+        buttonLeft: rect.left,
+        buttonRight: rect.right,
+        buttonWidth: rect.width,
+        buttonHeight: rect.height
       }
       onOpenOptionsMenu(position)
     }
   }
 
   const handleDropdownClick = () => {
-    setShowAddDropdown(!showAddDropdown)
+    console.log('🔍 handleDropdownClick called, current showAddDropdown:', showAddDropdown)
+    // Add a small delay to prevent auto-click issues
+    setTimeout(() => {
+      setShowAddDropdown(!showAddDropdown)
+      setIsDropdownReady(false) // Reset the ready flag
+      console.log('🔍 showAddDropdown set to:', !showAddDropdown)
+      
+      // Set the dropdown as ready after a short delay
+      if (!showAddDropdown) {
+        setTimeout(() => {
+          setIsDropdownReady(true)
+          console.log('🔍 Dropdown is now ready for interactions')
+        }, 50)
+      }
+    }, 10)
   }
 
   const handleDragOver = (e) => {
@@ -144,7 +176,7 @@ const TierRow = ({
           dropPosition = 'middle'
         }
 
-        onMoveCard(cardData, tier.id, dropPosition)
+        onMoveCard(cardData, tier?.id, dropPosition)
       }
     } catch (error) {
       console.error('Error parsing drag data:', error)
@@ -165,6 +197,19 @@ const TierRow = ({
     
     return baseClasses
   }
+  // Early return if tier is completely missing
+  if (!tier) {
+    return (
+      <div className="border border-gray-300 rounded-lg overflow-visible relative">
+        <div className="flex items-stretch min-h-[80px]">
+          <div className="flex-1 flex items-center justify-center p-4 bg-gray-50">
+            <span className="text-gray-500">Loading tier...</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div 
       className="border border-gray-300 rounded-lg overflow-visible relative"
@@ -203,9 +248,9 @@ const TierRow = ({
           </div>
           
           {/* Tier label */}
-          <div className={`flex items-center justify-center w-16 ${tier.color} border-r border-gray-300`}>
+          <div className={`flex items-center justify-center w-16 ${tier?.color || 'bg-gray-200'} border-r border-gray-300`}>
             <span className="text-xl font-bold text-gray-800">
-              {tier.name}
+              {tier?.name || 'Tier'}
             </span>
           </div>
         </div>
@@ -228,7 +273,7 @@ const TierRow = ({
             )}
             
             {/* Render existing cards */}
-            {tier.cards.map(card => (
+            {(tier.cards || []).map(card => (
               <Card 
                 key={card.id} 
                 card={card}
@@ -248,7 +293,12 @@ const TierRow = ({
             {/* Add card dropdown button */}
             <div className="relative" ref={dropdownRef}>
               <button
-                onClick={handleDropdownClick}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log('🔍 Main + button clicked')
+                  handleDropdownClick()
+                }}
                 className="w-12 h-12 bg-gray-400 hover:bg-gray-500 text-white rounded-md flex items-center justify-center transition-colors duration-200"
                 title="Add new card or import from sources (click for options)"
               >
@@ -276,12 +326,20 @@ const TierRow = ({
                   />
                   <div className="py-1">
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
+                        if (!isDropdownReady) {
+                          console.log('🔍 Dropdown not ready, ignoring click')
+                          return
+                        }
+                        console.log('🔍 Create New Card button clicked')
                         onAddCard()
                         setShowAddDropdown(false)
                       }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onFocus={(e) => e.preventDefault()}
                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -290,12 +348,20 @@ const TierRow = ({
                       Create New Card
                     </button>
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
+                        if (!isDropdownReady) {
+                          console.log('🔍 Dropdown not ready, ignoring click')
+                          return
+                        }
+                        console.log('🔍 Import Competitors button clicked')
                         onImportCards('competitors')
                         setShowAddDropdown(false)
                       }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onFocus={(e) => e.preventDefault()}
                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -304,12 +370,20 @@ const TierRow = ({
                       Competitors
                     </button>
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
+                        if (!isDropdownReady) {
+                          console.log('🔍 Dropdown not ready, ignoring click')
+                          return
+                        }
+                        console.log('🔍 Import Personas button clicked')
                         onImportCards('personas')
                         setShowAddDropdown(false)
                       }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onFocus={(e) => e.preventDefault()}
                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -318,12 +392,20 @@ const TierRow = ({
                       Personas
                     </button>
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
+                        if (!isDropdownReady) {
+                          console.log('🔍 Dropdown not ready, ignoring click')
+                          return
+                        }
+                        console.log('🔍 Import Pages button clicked')
                         onImportCards('pages')
                         setShowAddDropdown(false)
                       }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onFocus={(e) => e.preventDefault()}
                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -70,9 +70,12 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
         ${isHidden ? 'opacity-40 grayscale' : ''}
         ${isDeletedSource ? 'opacity-60 grayscale bg-gray-200 border-gray-400 cursor-not-allowed' : ''}
         ${isImageCard ? 'p-1' : 'px-3 py-2'}
-        ${getCardStyle(card.type)}
+        ${isDeletedSource ? 'bg-gray-200 border-gray-400' : getCardStyle(card.type)}
       `}
-      title={`${card.type}: ${card.text} ${isHidden ? '(hidden)' : ''} ${isDeletedSource ? '(deleted source)' : ''} (right-click for options)`}
+      title={isDeletedSource 
+        ? `This item was deleted from the source area. Original: ${card.text} (${card.type})` 
+        : `${card.type}: ${card.text} ${isHidden ? '(hidden)' : ''} (right-click for options)`
+      }
     >
       {/* Comment indicator */}
       {card.comments && card.comments.length > 0 && (
@@ -85,7 +88,7 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
       {isDeletedSource && (
         <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
           <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
           </svg>
         </div>
       )}
@@ -96,7 +99,7 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
           <img 
             src={card.imageUrl || card.image} 
             alt={card.text}
-            className="w-12 h-12 object-cover rounded"
+            className={`w-12 h-12 object-cover rounded ${isDeletedSource ? 'opacity-50' : ''}`}
             onError={(e) => {
               // Fallback to text if image fails to load
               e.target.style.display = 'none'
@@ -107,15 +110,17 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
             className="text-xs text-center leading-tight px-1 hidden"
             style={{ display: 'none' }}
           >
-            {card.text}
+            {isDeletedSource ? 'This item is deleted' : card.text}
           </span>
-          <span className="text-xs text-center leading-tight px-1">
-            {card.text}
+          <span className={`text-xs text-center leading-tight px-1 ${isDeletedSource ? 'text-gray-500 italic' : ''}`}>
+            {isDeletedSource ? 'This item is deleted' : card.text}
           </span>
         </div>
       ) : (
         // Text card or image card without image
-        <span>{card.text}</span>
+        <span className={isDeletedSource ? 'text-gray-500 italic line-through' : ''}>
+          {isDeletedSource ? 'This item is deleted' : card.text}
+        </span>
       )}
     </div>
   )

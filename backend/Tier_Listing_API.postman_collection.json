@@ -1,0 +1,1431 @@
+{
+	"info": {
+		"_postman_id": "tier-listing-api-collection",
+		"name": "Tier Listing API",
+		"description": "Complete API collection for the Tier Listing Tool backend. Includes all endpoints for tiers, cards, source cards, comments, and version history.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Check if the API is running and healthy"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Tiers",
+			"item": [
+				{
+					"name": "Get All Tiers",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers"
+							]
+						},
+						"description": "Retrieve all tiers with their cards"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Tier by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers/tier-a",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers",
+								"tier-a"
+							]
+						},
+						"description": "Retrieve a specific tier by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Tier",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"S\",\n  \"color\": \"bg-red-200\",\n  \"position\": 5\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers"
+							]
+						},
+						"description": "Create a new tier"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Tier",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"A+\",\n  \"color\": \"bg-green-200\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers/tier-a",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers",
+								"tier-a"
+							]
+						},
+						"description": "Update an existing tier"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Tier",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers/tier-a",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers",
+								"tier-a"
+							]
+						},
+						"description": "Delete a tier and all its cards"
+					},
+					"response": []
+				},
+				{
+					"name": "Move Tier Up",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers/tier-b/move-up",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers",
+								"tier-b",
+								"move-up"
+							]
+						},
+						"description": "Move a tier up in position"
+					},
+					"response": []
+				},
+				{
+					"name": "Move Tier Down",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers/tier-b/move-down",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers",
+								"tier-b",
+								"move-down"
+							]
+						},
+						"description": "Move a tier down in position"
+					},
+					"response": []
+				},
+				{
+					"name": "Duplicate Tier",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers/tier-a/duplicate",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers",
+								"tier-a",
+								"duplicate"
+							]
+						},
+						"description": "Duplicate a tier with all its cards"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Tier Below",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"B+\",\n  \"color\": \"bg-orange-200\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers/tier-b/add-below",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers",
+								"tier-b",
+								"add-below"
+							]
+						},
+						"description": "Add a new tier below the specified tier"
+					},
+					"response": []
+				},
+				{
+					"name": "Clear Tier Cards",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers/tier-a/cards",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers",
+								"tier-a",
+								"cards"
+							]
+						},
+						"description": "Remove all cards from a tier"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Tier Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tiers/stats",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tiers",
+								"stats"
+							]
+						},
+						"description": "Get statistics about all tiers"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Cards",
+			"item": [
+				{
+					"name": "Get All Cards",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/cards",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards"
+							]
+						},
+						"description": "Retrieve all cards"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Card by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/cards/card-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards",
+								"card-1"
+							]
+						},
+						"description": "Retrieve a specific card by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Card",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"text\": \"New Card\",\n  \"type\": \"competitor\",\n  \"subtype\": \"text\",\n  \"tierId\": \"tier-a\",\n  \"position\": 0,\n  \"sourceCategory\": \"competitors\",\n  \"hidden\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/cards",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards"
+							]
+						},
+						"description": "Create a new card in a tier"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Card",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"text\": \"Updated Card\",\n  \"type\": \"competitor\",\n  \"subtype\": \"image\",\n  \"imageUrl\": \"https://img.logo.dev/google.com?token=pk_X-1ZO13ESamOoEeKeLUTVA&format=png&size=200\",\n  \"hidden\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/cards/card-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards",
+								"card-1"
+							]
+						},
+						"description": "Update an existing card"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Card",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/cards/card-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards",
+								"card-1"
+							]
+						},
+						"description": "Delete a card"
+					},
+					"response": []
+				},
+				{
+					"name": "Move Card to Tier",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tierId\": \"tier-b\",\n  \"position\": 0\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/cards/card-1/move",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards",
+								"card-1",
+								"move"
+							]
+						},
+						"description": "Move a card to a different tier"
+					},
+					"response": []
+				},
+				{
+					"name": "Duplicate Card",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/cards/card-1/duplicate",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards",
+								"card-1",
+								"duplicate"
+							]
+						},
+						"description": "Duplicate a card"
+					},
+					"response": []
+				},
+				{
+					"name": "Toggle Card Hidden",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/cards/card-1/toggle-hidden",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards",
+								"card-1",
+								"toggle-hidden"
+							]
+						},
+						"description": "Toggle the hidden status of a card"
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Create Cards",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "[\n  {\n    \"text\": \"Bulk Card 1\",\n    \"type\": \"competitor\",\n    \"subtype\": \"text\",\n    \"tierId\": \"tier-a\",\n    \"position\": 0,\n    \"sourceCategory\": \"competitors\",\n    \"hidden\": false\n  },\n  {\n    \"text\": \"Bulk Card 2\",\n    \"type\": \"page\",\n    \"subtype\": null,\n    \"tierId\": \"tier-b\",\n    \"position\": 0,\n    \"sourceCategory\": \"pages\",\n    \"hidden\": false\n  }\n]"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/cards/bulk",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards",
+								"bulk"
+							]
+						},
+						"description": "Create multiple cards at once"
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Delete Cards",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "[\"card-1\", \"card-2\"]"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/cards/bulk",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards",
+								"bulk"
+							]
+						},
+						"description": "Delete multiple cards at once"
+					},
+					"response": []
+				},
+				{
+					"name": "Search Cards",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/cards/search?q=google",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"cards",
+								"search"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "google"
+								}
+							]
+						},
+						"description": "Search cards by text content"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Source Cards",
+			"item": [
+				{
+					"name": "Get All Source Cards",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards"
+							]
+						},
+						"description": "Retrieve all source cards"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Source Cards Grouped",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/grouped",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"grouped"
+							]
+						},
+						"description": "Get source cards grouped by category"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Source Cards by Category",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/category/competitors",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"category",
+								"competitors"
+							]
+						},
+						"description": "Get source cards by specific category"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Source Card by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/source-comp-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"source-comp-1"
+							]
+						},
+						"description": "Retrieve a specific source card by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Source Card",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"text\": \"New Competitor\",\n  \"type\": \"competitor\",\n  \"subtype\": \"text\",\n  \"sourceCategory\": \"competitors\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards"
+							]
+						},
+						"description": "Create a new source card"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Source Card",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"text\": \"Updated Competitor\",\n  \"type\": \"competitor\",\n  \"subtype\": \"image\",\n  \"imageUrl\": \"https://img.logo.dev/google.com?token=pk_X-1ZO13ESamOoEeKeLUTVA&format=png&size=200\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/source-comp-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"source-comp-1"
+							]
+						},
+						"description": "Update an existing source card"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Source Card",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/source-comp-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"source-comp-1"
+							]
+						},
+						"description": "Delete a source card (will also delete related tier cards)"
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Create Source Cards",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "[\n  {\n    \"text\": \"Bulk Source 1\",\n    \"type\": \"competitor\",\n    \"subtype\": \"text\",\n    \"sourceCategory\": \"competitors\"\n  },\n  {\n    \"text\": \"Bulk Source 2\",\n    \"type\": \"page\",\n    \"subtype\": null,\n    \"sourceCategory\": \"pages\"\n  }\n]"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/bulk",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"bulk"
+							]
+						},
+						"description": "Create multiple source cards at once"
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Delete Source Cards",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "[\"source-comp-1\", \"source-comp-2\"]"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/bulk",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"bulk"
+							]
+						},
+						"description": "Delete multiple source cards at once"
+					},
+					"response": []
+				},
+				{
+					"name": "Search Source Cards",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/search?q=google",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"search"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "google"
+								}
+							]
+						},
+						"description": "Search source cards by text content"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Source Cards Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/stats",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"stats"
+							]
+						},
+						"description": "Get statistics about source cards"
+					},
+					"response": []
+				},
+				{
+					"name": "Import Source Card to Tier",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tierId\": \"tier-a\",\n  \"position\": 0\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/source-cards/source-comp-1/import",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"source-cards",
+								"source-comp-1",
+								"import"
+							]
+						},
+						"description": "Import a source card into a tier as a regular card"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Comments",
+			"item": [
+				{
+					"name": "Get All Comments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments"
+							]
+						},
+						"description": "Retrieve all comments"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comment by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comments/comment-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments",
+								"comment-1"
+							]
+						},
+						"description": "Retrieve a specific comment by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments by Card ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comments/card/card-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments",
+								"card",
+								"card-1"
+							]
+						},
+						"description": "Get all comments for a specific card"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Comment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"text\": \"This is a great card!\",\n  \"cardId\": \"card-1\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments"
+							]
+						},
+						"description": "Create a new comment on a card"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Comment",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"text\": \"Updated comment text\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/comments/comment-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments",
+								"comment-1"
+							]
+						},
+						"description": "Update an existing comment"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Comment",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comments/comment-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments",
+								"comment-1"
+							]
+						},
+						"description": "Delete a comment"
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Create Comments",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "[\n  {\n    \"text\": \"Bulk Comment 1\",\n    \"cardId\": \"card-1\"\n  },\n  {\n    \"text\": \"Bulk Comment 2\",\n    \"cardId\": \"card-2\"\n  }\n]"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/comments/bulk",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments",
+								"bulk"
+							]
+						},
+						"description": "Create multiple comments at once"
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Delete Comments",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "[\"comment-1\", \"comment-2\"]"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/comments/bulk",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments",
+								"bulk"
+							]
+						},
+						"description": "Delete multiple comments at once"
+					},
+					"response": []
+				},
+				{
+					"name": "Search Comments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comments/search?q=great",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments",
+								"search"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "great"
+								}
+							]
+						},
+						"description": "Search comments by text content"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Recent Comments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comments/recent?limit=5",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments",
+								"recent"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "5"
+								}
+							]
+						},
+						"description": "Get recent comments"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Versions",
+			"item": [
+				{
+					"name": "Get All Versions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions"
+							]
+						},
+						"description": "Retrieve all version history"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Version by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/version-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"version-1"
+							]
+						},
+						"description": "Retrieve a specific version by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Version",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"description\": \"Initial setup with sample data\",\n  \"tiers\": [],\n  \"sourceCards\": []\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/versions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions"
+							]
+						},
+						"description": "Create a new version snapshot"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Version",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/version-1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"version-1"
+							]
+						},
+						"description": "Delete a version"
+					},
+					"response": []
+				},
+				{
+					"name": "Restore Version",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/version-1/restore",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"version-1",
+								"restore"
+							]
+						},
+						"description": "Restore the entire board to a specific version"
+					},
+					"response": []
+				},
+				{
+					"name": "Compare Versions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/compare?version1=version-1&version2=version-2",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"compare"
+							],
+							"query": [
+								{
+									"key": "version1",
+									"value": "version-1"
+								},
+								{
+									"key": "version2",
+									"value": "version-2"
+								}
+							]
+						},
+						"description": "Compare two versions"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Recent Versions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/recent?limit=5",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"recent"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "5"
+								}
+							]
+						},
+						"description": "Get recent versions"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Latest Version",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/latest",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"latest"
+							]
+						},
+						"description": "Get the latest version"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Versions by Date Range",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/date-range?start=2025-08-01&end=2025-08-02",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"date-range"
+							],
+							"query": [
+								{
+									"key": "start",
+									"value": "2025-08-01"
+								},
+								{
+									"key": "end",
+									"value": "2025-08-02"
+								}
+							]
+						},
+						"description": "Get versions within a date range"
+					},
+					"response": []
+				},
+				{
+					"name": "Search Versions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/search?q=initial",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"search"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "initial"
+								}
+							]
+						},
+						"description": "Search versions by description"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Version Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/stats",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"stats"
+							]
+						},
+						"description": "Get statistics about versions"
+					},
+					"response": []
+				},
+				{
+					"name": "Cleanup Old Versions",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/versions/cleanup?days=30",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"versions",
+								"cleanup"
+							],
+							"query": [
+								{
+									"key": "days",
+									"value": "30"
+								}
+							]
+						},
+						"description": "Clean up old versions (keep only recent ones)"
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:4000",
+			"type": "string"
+		}
+	]
+} 

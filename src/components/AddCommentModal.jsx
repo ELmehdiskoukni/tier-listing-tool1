@@ -4,11 +4,23 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
   const [comment, setComment] = useState('')
   const [isAdding, setIsAdding] = useState(false)
   const [localComments, setLocalComments] = useState([])
+  const [commentToDelete, setCommentToDelete] = useState(null)
 
   // Sync local comments with card comments when card changes
   useEffect(() => {
     if (card && card.comments) {
-      setLocalComments(card.comments)
+      // Check if comments is a string that needs to be parsed
+      let parsedComments = card.comments
+      if (typeof card.comments === 'string') {
+        try {
+          parsedComments = JSON.parse(card.comments)
+        } catch (e) {
+          console.error('🔍 AddCommentModal: failed to parse comments string:', e)
+          parsedComments = []
+        }
+      }
+      
+      setLocalComments(parsedComments)
     } else {
       setLocalComments([])
     }
@@ -18,30 +30,12 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
     e.preventDefault()
     
     const trimmedComment = comment.trim()
+    if (!trimmedComment) return
     
-    if (!trimmedComment) {
-      alert('Comment cannot be empty')
-      return
-    }
-
-    if (trimmedComment.length < 3) {
-      alert('Comment is too short. Must be at least 3 characters.')
-      return
-    }
-
-    if (trimmedComment.length > 200) {
-      alert('Comment is too long. Must not be more than 200 characters.')
-      return
-    }
-
     setIsAdding(true)
-
+    
     try {
-      await onAddComment(card, {
-        text: trimmedComment,
-        timestamp: new Date().toISOString(),
-        id: `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      })
+      await onAddComment(card, trimmedComment)
       
       setComment('')
       onClose()
@@ -54,10 +48,18 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
 
   const handleClose = () => {
     setComment('')
+    setCommentToDelete(null)
     onClose()
   }
 
-  if (!isOpen || !card) return null
+  const handleDeleteComment = (commentToDelete) => {
+    const updatedComments = localComments.filter(c => c.id !== commentToDelete.id)
+    setLocalComments(updatedComments)
+    onAddComment(card, null, updatedComments)
+    setCommentToDelete(null)
+  }
+
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999999999]">
@@ -114,30 +116,28 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
                 Previous Comments ({localComments.length})
               </h3>
               <div className="max-h-32 overflow-y-auto space-y-2">
-                {localComments.map((existingComment) => (
-                  <div key={existingComment.id} className="p-2 bg-gray-50 rounded text-sm flex justify-between items-start">
-                    <div className="flex-1">
-                      <p className="text-gray-800">{existingComment.text}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(existingComment.timestamp).toLocaleString()}
-                      </p>
+                {localComments.map((existingComment) => {
+                  return (
+                    <div key={existingComment.id} className="p-2 bg-gray-50 rounded text-sm flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="text-gray-800">{existingComment.text}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {new Date(existingComment.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCommentToDelete(existingComment)
+                        }}
+                        className="ml-2 text-red-500 hover:text-red-700 text-xs"
+                        title="Delete this comment"
+                      >
+                        ✕
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm('Are you sure you want to delete this comment?')) {
-                          const updatedComments = localComments.filter(c => c.id !== existingComment.id)
-                          setLocalComments(updatedComments)
-                          onAddComment(card, null, updatedComments)
-                        }
-                      }}
-                      className="ml-2 text-red-500 hover:text-red-700 text-xs"
-                      title="Delete this comment"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -162,6 +162,40 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
           </div>
         </form>
       </div>
+
+      {/* Comment Deletion Confirmation Dialog */}
+      {commentToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999999999]">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <div className="mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Delete Comment</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Are you sure you want to delete this comment? This action cannot be undone.
+              </p>
+            </div>
+            
+            <div className="mb-4 p-3 bg-gray-50 rounded-md">
+              <p className="text-sm text-gray-800">{commentToDelete.text}</p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCommentToDelete(null)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteComment(commentToDelete)}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors duration-200"
+              >
+                Delete Comment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
