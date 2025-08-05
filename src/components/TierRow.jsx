@@ -334,28 +334,6 @@ const TierRow = ({
                           console.log('🔍 Dropdown not ready, ignoring click')
                           return
                         }
-                        console.log('🔍 Create New Card button clicked')
-                        onAddCard()
-                        setShowAddDropdown(false)
-                      }}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onFocus={(e) => e.preventDefault()}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Create New Card
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        if (!isDropdownReady) {
-                          console.log('🔍 Dropdown not ready, ignoring click')
-                          return
-                        }
                         console.log('🔍 Import Competitors button clicked')
                         onImportCards('competitors')
                         setShowAddDropdown(false)

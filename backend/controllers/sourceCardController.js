@@ -1,4 +1,6 @@
 import { SourceCard } from '../models/SourceCard.js';
+import { Card } from '../models/Card.js';
+import { Tier } from '../models/Tier.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 // Get all source cards
@@ -204,6 +206,15 @@ export const importCardsToTier = asyncHandler(async (req, res) => {
     });
   }
   
+  // Verify the tier exists
+  const tier = await Tier.getById(tierId);
+  if (!tier) {
+    return res.status(404).json({
+      success: false,
+      error: `Tier with ID ${tierId} not found`
+    });
+  }
+  
   // Get source cards
   const sourceCards = [];
   for (const sourceCardId of sourceCardIds) {
@@ -217,11 +228,36 @@ export const importCardsToTier = asyncHandler(async (req, res) => {
     sourceCards.push(sourceCard);
   }
   
-  // Import to cards table (this would be handled by the card controller)
-  // For now, return the source cards that would be imported
+  // Import source cards to the tier as regular cards
+  const importedCards = [];
+  for (const sourceCard of sourceCards) {
+    // Generate a new card ID for the imported card
+    const cardId = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Get the next position in the tier
+    const position = await Card.getNextPositionInTier(tierId);
+    
+    // Create the card in the tier
+    const importedCard = await Card.create({
+      id: cardId,
+      text: sourceCard.text,
+      type: sourceCard.type,
+      subtype: sourceCard.subtype,
+      imageUrl: sourceCard.imageUrl,
+      hidden: false,
+      tierId: tierId,
+      position: position
+    });
+    
+    importedCards.push(importedCard);
+  }
+  
+  // Get the updated tiers with all cards
+  const updatedTiers = await Tier.getAllWithCards();
+  
   res.json({
     success: true,
-    message: `Ready to import ${sourceCards.length} cards to tier`,
-    data: sourceCards
+    message: `Successfully imported ${importedCards.length} cards to tier`,
+    data: updatedTiers
   });
 }); 

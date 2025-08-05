@@ -46,26 +46,16 @@ const AddSourceCardModal = ({ isOpen, onClose, onCreateCard, sourceType }) => {
     setSearchError(null)
     
     try {
-      // Load first 12 popular company logos
-      const logoPromises = popularCompanies.slice(0, 12).map(async (company) => {
-        try {
-          const response = await fetch(`https://img.logo.dev/${company}.com?token=pk_BGahd1eJTNevXh9wadmQ1w&format=png&size=200`)
-          if (response.ok) {
-            return {
-              name: company.charAt(0).toUpperCase() + company.slice(1),
-              domain: `${company}.com`,
-              url: response.url
-            }
-          }
-          return null
-        } catch (error) {
-          return null
+      // Create logo objects with direct URLs (no fetching to avoid CORS)
+      const logoResults = popularCompanies.slice(0, 12).map((company) => {
+        return {
+          name: company.charAt(0).toUpperCase() + company.slice(1),
+          domain: `${company}.com`,
+          url: `https://img.logo.dev/${company}.com?token=pk_BGahd1eJTNevXh9wadmQ1w&format=png&size=200`
         }
       })
       
-      const results = await Promise.all(logoPromises)
-      const validResults = results.filter(result => result !== null)
-      setSearchResults(validResults)
+      setSearchResults(logoResults)
     } catch (error) {
       setSearchError('Failed to load popular logos')
     } finally {
@@ -91,32 +81,17 @@ const AddSourceCardModal = ({ isOpen, onClose, onCreateCard, sourceType }) => {
         `${query.toLowerCase().replace(/\s+/g, '')}.com`
       ]
 
-      const logoPromises = searchTerms.map(async (domain) => {
-        try {
-          const response = await fetch(`https://img.logo.dev/${domain}?token=pk_BGahd1eJTNevXh9wadmQ1w&format=png&size=200`)
-          if (response.ok) {
-            return {
-              name: query,
-              domain: domain,
-              url: response.url
-            }
-          }
-          return null
-        } catch (error) {
-          return null
+      // Create logo objects with direct URLs (no fetching to avoid CORS)
+      const logoResults = searchTerms.map((domain) => {
+        return {
+          name: query,
+          domain: domain,
+          url: `https://img.logo.dev/${domain}?token=pk_BGahd1eJTNevXh9wadmQ1w&format=png&size=200`
         }
       })
-
-      const results = await Promise.all(logoPromises)
-      const validResults = results.filter(result => result !== null)
       
-      if (validResults.length === 0) {
-        setSearchError(`No logos found for "${query}". Try searching for the exact company name.`)
-        setSearchResults([])
-      } else {
-        setSearchResults(validResults)
-        setSearchError(null)
-      }
+      setSearchResults(logoResults)
+      setSearchError(null)
     } catch (error) {
       setSearchError('Search failed. Please try again.')
       setSearchResults([])
@@ -425,15 +400,25 @@ const AddSourceCardModal = ({ isOpen, onClose, onCreateCard, sourceType }) => {
                             }`}
                             title={logo.name}
                           >
-                            <img 
-                              src={logo.url} 
-                              alt={logo.name}
-                              className="w-full h-8 object-contain"
-                              onError={(e) => {
-                                // Hide broken images
-                                e.target.parentElement.style.display = 'none'
-                              }}
-                            />
+                            <div className="relative w-full h-8 flex items-center justify-center">
+                              <img 
+                                src={logo.url} 
+                                alt={logo.name}
+                                className="w-full h-8 object-contain"
+                                onError={(e) => {
+                                  // Show fallback placeholder when image fails to load
+                                  e.target.style.display = 'none'
+                                  e.target.nextSibling.style.display = 'flex'
+                                }}
+                              />
+                              {/* Fallback placeholder for failed images */}
+                              <div 
+                                className="w-full h-8 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-gray-500 text-xs font-medium"
+                                style={{ display: 'none' }}
+                              >
+                                {logo.name.charAt(0).toUpperCase()}
+                              </div>
+                            </div>
                             <p className="text-xs text-center mt-1 truncate">{logo.name}</p>
                           </button>
                         ))}

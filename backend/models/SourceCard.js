@@ -6,12 +6,12 @@ export class SourceCard {
   static async getAll() {
     const query = `
       SELECT 
-        card_id as id,
+        card_id as "id",
         text,
         type,
         subtype,
-        source_category as sourceCategory,
-        image_url as imageUrl,
+        source_category as "sourceCategory",
+        image_url as "imageUrl",
         created_at,
         updated_at
       FROM source_cards 
@@ -26,12 +26,12 @@ export class SourceCard {
   static async getByCategory(category) {
     const query = `
       SELECT 
-        card_id as id,
+        card_id as "id",
         text,
         type,
         subtype,
-        source_category as sourceCategory,
-        image_url as imageUrl,
+        source_category as "sourceCategory",
+        image_url as "imageUrl",
         created_at,
         updated_at
       FROM source_cards 
@@ -47,12 +47,12 @@ export class SourceCard {
   static async getById(cardId) {
     const query = `
       SELECT 
-        card_id as id,
+        card_id as "id",
         text,
         type,
         subtype,
-        source_category as sourceCategory,
-        image_url as imageUrl,
+        source_category as "sourceCategory",
+        image_url as "imageUrl",
         created_at,
         updated_at
       FROM source_cards 
@@ -60,7 +60,9 @@ export class SourceCard {
     `;
     
     const result = await pool.query(query, [cardId]);
-    return result.rows[0];
+    const sourceCard = result.rows[0];
+    
+    return sourceCard;
   }
 
   // Create new source card

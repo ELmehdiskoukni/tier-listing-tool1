@@ -281,8 +281,13 @@ export class Tier {
       throw new AppError('Tier not found', 404);
     }
     
+    // Ensure cards is always an array and sort cards by position
+    if (!Array.isArray(tier.cards)) {
+      tier.cards = [];
+    }
+    
     // Sort cards by position
-    if (tier.cards) {
+    if (tier.cards.length > 0) {
       tier.cards.sort((a, b) => a.position - b.position);
     }
     
@@ -293,7 +298,7 @@ export class Tier {
   static async getAllWithCards() {
     const query = `
       SELECT 
-        t.tier_id as id,
+        t.tier_id as "id",
         t.name,
         t.color,
         t.position,
@@ -333,9 +338,15 @@ export class Tier {
     const result = await pool.query(query);
     const tiers = result.rows;
     
-    // Sort cards by position for each tier
+    // Ensure each tier has a proper cards array and sort cards by position
     tiers.forEach(tier => {
-      if (tier.cards) {
+      // Ensure cards is always an array
+      if (!Array.isArray(tier.cards)) {
+        tier.cards = [];
+      }
+      
+      // Sort cards by position
+      if (tier.cards.length > 0) {
         tier.cards.sort((a, b) => a.position - b.position);
       }
     });

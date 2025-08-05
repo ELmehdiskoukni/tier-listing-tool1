@@ -521,7 +521,15 @@ const TierBoard = () => {
 
   const handleRemoveImage = async (card) => {
     try {
-      await updateCardProperty(card, { imageUrl: null, image: null })
+      // Remove image and convert card back to text type
+      await updateCardProperty(card, { 
+        imageUrl: null, 
+        image: null,
+        subtype: 'text' // Convert from 'image' to 'text' type
+      })
+      
+      // Save version after removing image
+      await saveVersion(`Removed image from card "${card.text}"`)
     } catch (err) {
       console.error('Failed to remove image:', err)
     }

@@ -39,26 +39,16 @@ const ChangeImageModal = ({ isOpen, onClose, onSaveImage, card }) => {
     setSearchError(null)
     
     try {
-      // Load first 12 popular company logos
-      const logoPromises = popularCompanies.slice(0, 12).map(async (company) => {
-        try {
-          const response = await fetch(`https://img.logo.dev/${company}.com?token=pk_BGahd1eJTNevXh9wadmQ1w&format=png&size=200`)
-          if (response.ok) {
-            return {
-              name: company.charAt(0).toUpperCase() + company.slice(1),
-              domain: `${company}.com`,
-              url: response.url
-            }
-          }
-          return null
-        } catch (error) {
-          return null
+      // Create logo objects with direct URLs (no fetching to avoid CORS)
+      const logoResults = popularCompanies.slice(0, 12).map((company) => {
+        return {
+          name: company.charAt(0).toUpperCase() + company.slice(1),
+          domain: `${company}.com`,
+          url: `https://img.logo.dev/${company}.com?token=pk_BGahd1eJTNevXh9wadmQ1w&format=png&size=200`
         }
       })
       
-      const results = await Promise.all(logoPromises)
-      const validResults = results.filter(result => result !== null)
-      setSearchResults(validResults)
+      setSearchResults(logoResults)
     } catch (error) {
       setSearchError('Failed to load popular logos')
     } finally {
@@ -84,30 +74,17 @@ const ChangeImageModal = ({ isOpen, onClose, onSaveImage, card }) => {
         `${query.toLowerCase().replace(/\s+/g, '')}.com`
       ]
 
-      const logoPromises = searchTerms.map(async (domain) => {
-        try {
-          const response = await fetch(`https://img.logo.dev/${domain}?token=pk_BGahd1eJTNevXh9wadmQ1w&format=png&size=200`)
-          if (response.ok) {
-            return {
-              name: query,
-              domain: domain,
-              url: response.url
-            }
-          }
-          return null
-        } catch (error) {
-          return null
+      // Create logo objects with direct URLs (no fetching to avoid CORS)
+      const logoResults = searchTerms.map((domain) => {
+        return {
+          name: query,
+          domain: domain,
+          url: `https://img.logo.dev/${domain}?token=pk_BGahd1eJTNevXh9wadmQ1w&format=png&size=200`
         }
       })
-
-      const results = await Promise.all(logoPromises)
-      const validResults = results.filter(result => result !== null)
       
-      if (validResults.length === 0) {
-        setSearchError('No logos found for this search term')
-      } else {
-        setSearchResults(validResults)
-      }
+      setSearchResults(logoResults)
+      setSearchError(null)
     } catch (error) {
       setSearchError('Failed to search logos')
     } finally {
@@ -282,14 +259,25 @@ const ChangeImageModal = ({ isOpen, onClose, onSaveImage, card }) => {
                       onClick={() => handleLogoSelect(logo)}
                       className="p-2 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
                     >
-                      <img
-                        src={logo.url}
-                        alt={logo.name}
-                        className="w-full h-12 object-contain"
-                        onError={(e) => {
-                          e.target.style.display = 'none'
-                        }}
-                      />
+                      <div className="relative w-full h-12 flex items-center justify-center">
+                        <img
+                          src={logo.url}
+                          alt={logo.name}
+                          className="w-full h-12 object-contain"
+                          onError={(e) => {
+                            // Show fallback placeholder when image fails to load
+                            e.target.style.display = 'none'
+                            e.target.nextSibling.style.display = 'flex'
+                          }}
+                        />
+                        {/* Fallback placeholder for failed images */}
+                        <div 
+                          className="w-full h-12 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-gray-500 text-xs font-medium"
+                          style={{ display: 'none' }}
+                        >
+                          {logo.name.charAt(0).toUpperCase()}
+                        </div>
+                      </div>
                       <p className="text-xs text-gray-600 mt-1 truncate">{logo.name}</p>
                     </button>
                   ))

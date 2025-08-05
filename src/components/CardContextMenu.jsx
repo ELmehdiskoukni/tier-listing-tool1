@@ -44,8 +44,8 @@ const CardContextMenu = ({
   if (!isOpen || !card) return null
 
   // Check if card has an image
-  const hasImage = card.imageUrl || card.image
-  const isImageCard = card.subtype === 'image' || hasImage
+  const hasImage = (card.imageUrl && card.imageUrl !== null) || (card.image && card.image !== null)
+  const isImageCard = card.subtype === 'image' && hasImage
   
   // Check if card is a persona card
   const isPersonaCard = card.type === 'personas' || card.type === 'persona'

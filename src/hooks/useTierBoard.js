@@ -25,6 +25,35 @@ export const useTierBoard = () => {
     loadInitialData();
   }, []);
 
+  // Sanitize tier data to ensure proper structure
+  const sanitizeTierData = (tiers) => {
+    if (!Array.isArray(tiers)) {
+      console.warn('🔍 tiers is not an array, returning empty array');
+      return [];
+    }
+    
+    return tiers.map((tier, index) => {
+      if (!tier || typeof tier !== 'object') {
+        console.warn(`🔍 Tier ${index} is not a valid object, skipping`);
+        return null;
+      }
+      
+      // Ensure cards is always an array
+      const sanitizedTier = {
+        ...tier,
+        cards: Array.isArray(tier.cards) ? tier.cards : []
+      };
+      
+      // Log if we had to fix the cards property
+      if (!Array.isArray(tier.cards)) {
+        console.warn(`🔍 Fixed tier ${index} (${tier.name || tier.id}): cards was not an array, set to empty array`);
+        console.warn(`🔍 Original cards value:`, tier.cards);
+      }
+      
+      return sanitizedTier;
+    }).filter(tier => tier !== null); // Remove any null tiers
+  };
+
   const loadInitialData = async () => {
     console.log('🔍 loadInitialData called')
     try {
@@ -36,7 +65,13 @@ export const useTierBoard = () => {
       const loadedTiers = tiersResponse.data.data || tiersResponse.data;
       console.log('🔍 Loaded tiers from API:', loadedTiers)
       console.log('🔍 Loaded tiers length:', loadedTiers?.length)
-      setTiers(loadedTiers);
+      
+      // Sanitize tier data to ensure proper structure
+      const sanitizedTiers = sanitizeTierData(loadedTiers);
+      console.log('🔍 Sanitized tiers:', sanitizedTiers)
+      console.log('🔍 Sanitized tiers length:', sanitizedTiers?.length)
+      
+      setTiers(sanitizedTiers);
       
       // Check if we have at least 2 tiers (project requirement)
       if (!loadedTiers || loadedTiers.length < 2) {
@@ -70,7 +105,13 @@ export const useTierBoard = () => {
         const updatedTiers = updatedTiersResponse.data.data || updatedTiersResponse.data;
         console.log('🔍 Updated tiers from API:', updatedTiers)
         console.log('🔍 Updated tiers length:', updatedTiers?.length)
-        setTiers(updatedTiers);
+        
+        // Sanitize the updated tiers as well
+        const sanitizedUpdatedTiers = sanitizeTierData(updatedTiers);
+        console.log('🔍 Sanitized updated tiers:', sanitizedUpdatedTiers)
+        console.log('🔍 Sanitized updated tiers length:', sanitizedUpdatedTiers?.length)
+        
+        setTiers(sanitizedUpdatedTiers);
       }
       
       // Load source cards grouped
@@ -130,7 +171,12 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers from API after create tier:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      // Sanitize the tiers data
+      const sanitizedTiers = sanitizeTierData(updatedTiers);
+      console.log('🔍 Sanitized tiers after create tier:', sanitizedTiers)
+      console.log('🔍 Sanitized tiers length:', sanitizedTiers?.length)
+      
+      setTiers(sanitizedTiers);
       
       return newTier;
     } catch (err) {
@@ -161,7 +207,12 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers from API after update tier:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      // Sanitize the tiers data
+      const sanitizedTiers = sanitizeTierData(updatedTiers);
+      console.log('🔍 Sanitized tiers after update tier:', sanitizedTiers)
+      console.log('🔍 Sanitized tiers length:', sanitizedTiers?.length)
+      
+      setTiers(sanitizedTiers);
       
       return updatedTier;
     } catch (err) {
@@ -190,7 +241,12 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers from API after delete tier:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      // Sanitize the tiers data
+      const sanitizedTiers = sanitizeTierData(updatedTiers);
+      console.log('🔍 Sanitized tiers after delete tier:', sanitizedTiers)
+      console.log('🔍 Sanitized tiers length:', sanitizedTiers?.length)
+      
+      setTiers(sanitizedTiers);
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to delete tier');
       setError(errorMessage);
@@ -612,20 +668,64 @@ export const useTierBoard = () => {
   // Import cards to tier
   const importCardsToTier = async (importData) => {
     try {
+      console.log('🔍 importCardsToTier called with:', importData);
+      
       const response = await sourceCardAPI.importCardsToTier(importData);
       const updatedTiers = response.data.data || response.data;
       
+      console.log('🔍 Response from importCardsToTier API:', response.data);
+      console.log('🔍 Updated tiers data:', updatedTiers);
+      
+      // Sanitize the tiers data to ensure proper structure
+      const sanitizedTiers = sanitizeTierData(updatedTiers);
+      console.log('🔍 Sanitized tiers from import:', sanitizedTiers);
+      
       // Validate that updatedTiers is an array and has the expected structure
-      if (Array.isArray(updatedTiers)) {
-        setTiers(updatedTiers);
+      if (Array.isArray(sanitizedTiers) && sanitizedTiers.length > 0) {
+        // Additional validation: check that each tier has the expected structure
+        const validationResults = sanitizedTiers.map((tier, index) => {
+          if (!tier || typeof tier !== 'object') {
+            return { index, valid: false, error: 'Tier is not an object' };
+          }
+          
+          const requiredProps = ['id', 'name', 'color', 'position', 'cards'];
+          const missingProps = requiredProps.filter(prop => !(prop in tier));
+          
+          if (missingProps.length > 0) {
+            return { index, valid: false, error: `Missing properties: ${missingProps.join(', ')}` };
+          }
+          
+          if (!Array.isArray(tier.cards)) {
+            return { index, valid: false, error: 'cards property is not an array' };
+          }
+          
+          return { index, valid: true };
+        });
+        
+        const invalidTiers = validationResults.filter(result => !result.valid);
+        
+        if (invalidTiers.length === 0) {
+          console.log('🔍 Setting tiers with validated data:', sanitizedTiers.length, 'tiers');
+          setTiers(sanitizedTiers);
+        } else {
+          console.error('🔍 Invalid tier structure detected:');
+          invalidTiers.forEach(result => {
+            console.error(`  Tier ${result.index}: ${result.error}`);
+            console.error(`  Tier data:`, sanitizedTiers[result.index]);
+          });
+          console.error('🔍 All tiers data:', sanitizedTiers);
+          // Fallback: reload all data to ensure consistency
+          await loadInitialData();
+        }
       } else {
-        console.error('Invalid tiers data received from importCardsToTier API:', updatedTiers);
+        console.error('🔍 Invalid tiers data received from importCardsToTier API:', updatedTiers);
         // Fallback: reload all data to ensure consistency
         await loadInitialData();
       }
       
       return updatedTiers;
     } catch (err) {
+      console.error('🔍 Error in importCardsToTier:', err);
       const errorMessage = handleAPIError(err, 'Failed to import cards');
       setError(errorMessage);
       throw err;

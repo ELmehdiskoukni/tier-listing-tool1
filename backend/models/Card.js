@@ -90,20 +90,22 @@ export class Card {
       INSERT INTO cards (card_id, text, type, subtype, image_url, hidden, tier_id, position)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING 
-        card_id as id,
+        card_id as "id",
         text,
         type,
         subtype,
-        image_url as imageUrl,
+        image_url as "imageUrl",
         hidden,
-        tier_id as tierId,
+        tier_id as "tierId",
         position,
         created_at,
         updated_at
     `;
     
     const result = await pool.query(query, [id, text, type, subtype, imageUrl, hidden, tierId, position]);
-    return result.rows[0];
+    const createdCard = result.rows[0];
+    
+    return createdCard;
   }
 
   // Update card
