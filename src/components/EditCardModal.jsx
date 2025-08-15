@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { toast } from 'react-toastify'
 
 const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
   const [cardText, setCardText] = useState('')
@@ -31,17 +32,17 @@ const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
     const trimmedText = cardText.trim()
     
     if (!trimmedText) {
-      alert('Card text cannot be empty')
+      toast.error('Card text cannot be empty')
       return
     }
 
     if (trimmedText.length < 2) {
-      alert('Text is too short. Must be at least 2 characters.')
+      toast.error('Text is too short. Must be at least 2 characters.')
       return
     }
 
     if (trimmedText.length > 20) {
-      alert('Text is too long. Must not be more than 20 characters.')
+      toast.error('Text is too long. Must not be more than 20 characters.')
       return
     }
 
@@ -51,7 +52,7 @@ const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
       await onSave(card, { text: trimmedText })
       onClose()
     } catch (error) {
-      alert('Failed to save card. Please try again.')
+      toast.error('Failed to save card. Please try again.')
     } finally {
       setIsSaving(false)
     }

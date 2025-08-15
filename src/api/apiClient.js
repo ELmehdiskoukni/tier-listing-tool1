@@ -116,6 +116,14 @@ export const sourceCardAPI = {
   
   // Get source card stats
   getSourceCardStats: () => apiClient.get('/source-cards/stats'),
+
+  // Source card comments
+  getComments: (sourceCardId) => apiClient.get(`/source-cards/${sourceCardId}/comments`),
+  addComment: (sourceCardId, text) => apiClient.post(`/source-cards/${sourceCardId}/comments`, { text }),
+  deleteComment: (sourceCardId, commentId) => apiClient.delete(`/source-cards/${sourceCardId}/comments/${commentId}`),
+
+  // Toggle hidden for all tier instances of a source card
+  toggleHiddenForInstances: (sourceCardId) => apiClient.post(`/source-cards/${sourceCardId}/toggle-hidden`),
 };
 
 // API functions for Cards

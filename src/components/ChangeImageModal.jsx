@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { toast } from 'react-toastify'
 
 const ChangeImageModal = ({ isOpen, onClose, onSaveImage, card }) => {
   const [selectedImage, setSelectedImage] = useState(null)
@@ -69,6 +70,7 @@ const ChangeImageModal = ({ isOpen, onClose, onSaveImage, card }) => {
       // Try to find logos by searching for potential domain variations
       const searchTerms = [
         `${query.toLowerCase()}.com`,
+        `${query.toLowerCase()}.ma`,
         `${query.toLowerCase()}.io`,
         `${query.toLowerCase()}.org`,
         `${query.toLowerCase().replace(/\s+/g, '')}.com`
@@ -94,17 +96,24 @@ const ChangeImageModal = ({ isOpen, onClose, onSaveImage, card }) => {
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0]
+    console.log('🔍 handleFileUpload - file:', file)
     if (file) {
       if (file.size > 2 * 1024 * 1024) { // 2MB limit
-        alert('File size must be less than 2MB')
+        toast.error('File size must be less than 2MB')
         return
       }
 
       const reader = new FileReader()
       reader.onload = (e) => {
         const imageUrl = e.target.result
+        console.log('🔍 handleFileUpload - e.target.result:', e.target.result)
+        console.log('🔍 handleFileUpload - imageUrl:', imageUrl)
+        console.log('🔍 handleFileUpload - typeof imageUrl:', typeof imageUrl)
         setSelectedImage(imageUrl)
         setImagePreview(imageUrl)
+      }
+      reader.onerror = (e) => {
+        console.error('🔍 handleFileUpload - FileReader error:', e)
       }
       reader.readAsDataURL(file)
     }
@@ -119,9 +128,13 @@ const ChangeImageModal = ({ isOpen, onClose, onSaveImage, card }) => {
     e.preventDefault()
     
     if (!selectedImage) {
-      alert('Please select an image')
+      toast.error('Please select an image')
       return
     }
+
+    console.log('🔍 handleSubmit - selectedImage:', selectedImage)
+    console.log('🔍 handleSubmit - typeof selectedImage:', typeof selectedImage)
+    console.log('🔍 handleSubmit - card:', card)
 
     setIsSaving(true)
 
@@ -129,7 +142,7 @@ const ChangeImageModal = ({ isOpen, onClose, onSaveImage, card }) => {
       await onSaveImage(card, selectedImage)
       onClose()
     } catch (error) {
-      alert('Failed to update image. Please try again.')
+      toast.error('Failed to update image. Please try again.')
     } finally {
       setIsSaving(false)
     }

@@ -41,10 +41,14 @@ const createTables = async () => {
         subtype VARCHAR(50),
         source_category VARCHAR(50) NOT NULL,
         image_url TEXT,
+        hidden BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Backfill: add hidden column if missing for existing databases
+    await client.query(`ALTER TABLE source_cards ADD COLUMN IF NOT EXISTS hidden BOOLEAN DEFAULT FALSE`);
 
     // Create cards table (tier cards)
     await client.query(`
@@ -77,6 +81,19 @@ const createTables = async () => {
       )
     `);
 
+    // Create source_comments table (for comments on source cards)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS source_comments (
+        id SERIAL PRIMARY KEY,
+        comment_id VARCHAR(255) UNIQUE NOT NULL,
+        text TEXT NOT NULL,
+        source_card_id VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (source_card_id) REFERENCES source_cards(card_id) ON DELETE CASCADE
+      )
+    `);
+
     // Create versions table
     await client.query(`
       CREATE TABLE IF NOT EXISTS versions (
@@ -96,6 +113,7 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_cards_position ON cards(position);
       CREATE INDEX IF NOT EXISTS idx_source_cards_category ON source_cards(source_category);
       CREATE INDEX IF NOT EXISTS idx_comments_card_id ON comments(card_id);
+      CREATE INDEX IF NOT EXISTS idx_source_comments_source_card_id ON source_comments(source_card_id);
       CREATE INDEX IF NOT EXISTS idx_versions_created_at ON versions(created_at);
     `);
 

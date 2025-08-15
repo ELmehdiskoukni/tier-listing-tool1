@@ -234,54 +234,119 @@ export class Tier {
   }
 
   // Get tier with cards
-  static async getWithCards(tierId) {
-    const query = `
-      SELECT 
-        t.tier_id as id,
-        t.name,
-        t.color,
-        t.position,
-        t.created_at,
-        t.updated_at,
-        json_agg(
-          CASE 
-            WHEN c.card_id IS NOT NULL THEN
-              json_build_object(
-                'id', c.card_id,
-                'text', c.text,
-                'type', c.type,
-                'subtype', c.subtype,
-                'imageUrl', c.image_url,
-                'hidden', c.hidden,
-                'position', c.position,
-                'comments', COALESCE(
-                  (SELECT json_agg(
-                    json_build_object(
-                      'id', cm.comment_id,
-                      'text', cm.text,
-                      'createdAt', cm.created_at
-                    )
-                  ) FROM comments cm WHERE cm.card_id = c.card_id),
-                  '[]'::json
-                )
+
+// Get tier with cards and comments
+static async getWithCards(tierId) {
+  const query = `
+    SELECT 
+      t.tier_id as id,
+      t.name,
+      t.color,
+      t.position,
+      t.created_at,
+      t.updated_at,
+      json_agg(
+        CASE 
+          WHEN c.card_id IS NOT NULL THEN
+            json_build_object(
+              'id', c.card_id,
+              'text', c.text,
+              'type', c.type,
+              'subtype', c.subtype,
+              'imageUrl', c.image_url,
+              'hidden', c.hidden,
+              'position', c.position,
+              'comments', COALESCE(
+                (SELECT json_agg(
+                  json_build_object(
+                    'id', cm.comment_id,
+                    'text', cm.text,
+                    'createdAt', to_char(cm.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                  )
+                  ORDER BY cm.created_at ASC
+                ) FROM comments cm WHERE cm.card_id = c.card_id),
+                '[]'::json
               )
-            ELSE NULL
-          END
-        ) FILTER (WHERE c.card_id IS NOT NULL) as cards
-      FROM tiers t
-      LEFT JOIN cards c ON t.tier_id = c.tier_id
-      WHERE t.tier_id = $1
-      GROUP BY t.tier_id, t.name, t.color, t.position, t.created_at, t.updated_at
-    `;
-    
-    const result = await pool.query(query, [tierId]);
-    const tier = result.rows[0];
-    
-    if (!tier) {
-      throw new AppError('Tier not found', 404);
-    }
-    
-    // Ensure cards is always an array and sort cards by position
+            )
+          ELSE NULL
+        END
+      ) FILTER (WHERE c.card_id IS NOT NULL) as cards
+    FROM tiers t
+    LEFT JOIN cards c ON t.tier_id = c.tier_id
+    WHERE t.tier_id = $1
+    GROUP BY t.tier_id, t.name, t.color, t.position, t.created_at, t.updated_at
+  `;
+  
+  const result = await pool.query(query, [tierId]);
+  const tier = result.rows[0];
+  
+  if (!tier) {
+    throw new AppError('Tier not found', 404);
+  }
+  
+  // Ensure cards is always an array and sort cards by position
+  if (!Array.isArray(tier.cards)) {
+    tier.cards = [];
+  }
+  
+  // Sort cards by position
+  if (tier.cards.length > 0) {
+    tier.cards.sort((a, b) => a.position - b.position);
+  }
+  
+  return tier;
+}
+
+  // Get all tiers with cards
+
+// Get all tiers with cards and comments
+static async getAllWithCards() {
+  const query = `
+    SELECT 
+      t.tier_id as "id",
+      t.name,
+      t.color,
+      t.position,
+      t.created_at,
+      t.updated_at,
+      json_agg(
+        CASE 
+          WHEN c.card_id IS NOT NULL THEN
+            json_build_object(
+              'id', c.card_id,
+              'text', c.text,
+              'type', c.type,
+              'subtype', c.subtype,
+              'imageUrl', c.image_url,
+              'hidden', c.hidden,
+              'position', c.position,
+              'comments', COALESCE(
+                (SELECT json_agg(
+                  json_build_object(
+                    'id', cm.comment_id,
+                    'text', cm.text,
+                    'createdAt', to_char(cm.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                  )
+                  ORDER BY cm.created_at ASC
+                ) FROM comments cm WHERE cm.card_id = c.card_id),
+                '[]'::json
+              )
+            )
+          ELSE NULL
+        END
+      ) FILTER (WHERE c.card_id IS NOT NULL) as cards
+    FROM tiers t
+    LEFT JOIN cards c ON t.tier_id = c.tier_id
+    GROUP BY t.tier_id, t.name, t.color, t.position, t.created_at, t.updated_at
+    ORDER BY t.position ASC
+  `;
+  
+  const result = await pool.query(query);
+  const tiers = result.rows;
+  
+  // Ensure each tier has a proper cards array and sort cards by position
+  tiers.forEach(tier => {
+    // Ensure cards is always an array
     if (!Array.isArray(tier.cards)) {
       tier.cards = [];
     }
@@ -290,69 +355,10 @@ export class Tier {
     if (tier.cards.length > 0) {
       tier.cards.sort((a, b) => a.position - b.position);
     }
-    
-    return tier;
-  }
-
-  // Get all tiers with cards
-  static async getAllWithCards() {
-    const query = `
-      SELECT 
-        t.tier_id as "id",
-        t.name,
-        t.color,
-        t.position,
-        t.created_at,
-        t.updated_at,
-        json_agg(
-          CASE 
-            WHEN c.card_id IS NOT NULL THEN
-              json_build_object(
-                'id', c.card_id,
-                'text', c.text,
-                'type', c.type,
-                'subtype', c.subtype,
-                'imageUrl', c.image_url,
-                'hidden', c.hidden,
-                'position', c.position,
-                'comments', COALESCE(
-                  (SELECT json_agg(
-                    json_build_object(
-                      'id', cm.comment_id,
-                      'text', cm.text,
-                      'createdAt', cm.created_at
-                    )
-                  ) FROM comments cm WHERE cm.card_id = c.card_id),
-                  '[]'::json
-                )
-              )
-            ELSE NULL
-          END
-        ) FILTER (WHERE c.card_id IS NOT NULL) as cards
-      FROM tiers t
-      LEFT JOIN cards c ON t.tier_id = c.tier_id
-      GROUP BY t.tier_id, t.name, t.color, t.position, t.created_at, t.updated_at
-      ORDER BY t.position ASC
-    `;
-    
-    const result = await pool.query(query);
-    const tiers = result.rows;
-    
-    // Ensure each tier has a proper cards array and sort cards by position
-    tiers.forEach(tier => {
-      // Ensure cards is always an array
-      if (!Array.isArray(tier.cards)) {
-        tier.cards = [];
-      }
-      
-      // Sort cards by position
-      if (tier.cards.length > 0) {
-        tier.cards.sort((a, b) => a.position - b.position);
-      }
-    });
-    
-    return tiers;
-  }
+  });
+  
+  return tiers;
+}
 
   // Check if tier exists
   static async exists(tierId) {

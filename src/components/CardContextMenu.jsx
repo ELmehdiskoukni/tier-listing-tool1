@@ -93,9 +93,10 @@ const CardContextMenu = ({
         onClose()
       }
     },
-    {
+    // Show hide/show option only for cards in source area; cascades to tier instances
+    ...(isCardInSourceArea(card) ? [{
       id: 'toggle-hidden',
-      label: card.hidden ? 'Show Card' : 'Hide Card',
+      label: 'Hide/Show ',
       icon: card.hidden ? (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -110,7 +111,7 @@ const CardContextMenu = ({
         onToggleHidden(card)
         onClose()
       }
-    },
+    }] : []),
     // Persona-specific options (only show for persona cards in tiers, not in source area)
     ...(isPersonaCard && !isCardInSourceArea(card) ? [
       {

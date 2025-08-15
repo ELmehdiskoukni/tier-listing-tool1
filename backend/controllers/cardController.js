@@ -1,6 +1,8 @@
 import { Card } from '../models/Card.js';
 import { Tier } from '../models/Tier.js';
+import { Comment } from '../models/Comment.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { pool } from '../config/database.js';
 
 // Get all cards
 export const getAllCards = asyncHandler(async (req, res) => {
@@ -129,41 +131,39 @@ export const deleteCard = asyncHandler(async (req, res) => {
 export const moveCard = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { targetTierId, position } = req.body;
-  
+
   if (!targetTierId) {
-    return res.status(400).json({
-      success: false,
-      error: 'Target tier ID is required'
-    });
+    return res.status(400).json({ success: false, error: 'Target tier ID is required' });
   }
-  
-  // Check if target tier exists
+
+  // Validate destination tier
   const targetTier = await Tier.getById(targetTierId);
   if (!targetTier) {
-    return res.status(404).json({
-      success: false,
-      error: 'Target tier not found'
-    });
+    return res.status(404).json({ success: false, error: 'Target tier not found' });
   }
-  
-  // If position not provided, get next available position in target tier
-  const cardPosition = position !== undefined && position !== null ? parseInt(position) : await Card.getNextPositionInTier(targetTierId);
-  
-  const updatedCard = await Card.moveToTier(id, targetTierId, cardPosition);
-  
-  res.json({
-    success: true,
-    data: updatedCard
-  });
+
+  // If position not provided, compute next available position
+  const cardPosition = position !== undefined && position !== null
+    ? parseInt(position)
+    : await Card.getNextPositionInTier(targetTierId);
+
+  // Move the card
+  await Card.moveToTier(id, targetTierId, cardPosition);
+
+  // Return full, normalized tiers with cards so frontend can set state safely
+  const tiersWithCards = await Tier.getAllWithCards();
+  return res.json({ success: true, data: tiersWithCards });
 });
 
-// Duplicate card
+// Fixed duplicateCard function in backend/controllers/cardController.js
+// Improved duplicateCard function with timestamp preservation
 export const duplicateCard = asyncHandler(async (req, res) => {
   const { id } = req.params;
   
   console.log('🔍 Backend: duplicateCard called with id:', id)
   
-  const originalCard = await Card.getById(id);
+  // Get the original card with comments
+  const originalCard = await Card.getWithComments(id);
   if (!originalCard) {
     return res.status(404).json({
       success: false,
@@ -171,7 +171,7 @@ export const duplicateCard = asyncHandler(async (req, res) => {
     });
   }
   
-  console.log('🔍 Backend: originalCard:', originalCard)
+  console.log('🔍 Backend: originalCard with comments:', originalCard)
   
   // Handle both field name variations (tierId vs tierid)
   const tierId = originalCard.tierId || originalCard.tierid;
@@ -195,7 +195,7 @@ export const duplicateCard = asyncHandler(async (req, res) => {
   
   const newCardData = {
     id: newCardId,
-    text: `${originalCard.text} Copy`,
+    text: originalCard.text,
     type: originalCard.type,
     subtype: originalCard.subtype,
     imageUrl: originalCard.imageUrl || originalCard.imageurl,
@@ -206,12 +206,69 @@ export const duplicateCard = asyncHandler(async (req, res) => {
   
   console.log('🔍 Backend: newCardData:', newCardData)
   
-  const newCard = await Card.create(newCardData);
+  const client = await pool.connect();
   
-  res.status(201).json({
-    success: true,
-    data: newCard
-  });
+  try {
+    await client.query('BEGIN');
+    
+    // Create the new card
+    await client.query(
+      `INSERT INTO cards (card_id, text, type, subtype, image_url, hidden, tier_id, position)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [newCardId, newCardData.text, newCardData.type, newCardData.subtype, 
+       newCardData.imageUrl, newCardData.hidden, newCardData.tierId, newCardData.position]
+    );
+    
+    // Clone all comments
+    if (originalCard.comments && originalCard.comments.length > 0) {
+      for (const comment of originalCard.comments) {
+        const newCommentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Preserve original comment timestamp for historical accuracy
+        // If we can parse the original timestamp
+        let originalTimestamp = null;
+        try {
+          if (comment.createdAt) {
+            originalTimestamp = new Date(comment.createdAt);
+          }
+        } catch (e) {
+          console.error('Error parsing timestamp:', e);
+        }
+        
+        if (originalTimestamp && !isNaN(originalTimestamp.getTime())) {
+          // Use the timestamp from original comment
+          await client.query(
+            `INSERT INTO comments (comment_id, text, card_id, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $4)`,
+            [newCommentId, comment.text, newCardId, originalTimestamp]
+          );
+        } else {
+          // Fall back to current timestamp
+          await client.query(
+            `INSERT INTO comments (comment_id, text, card_id)
+             VALUES ($1, $2, $3)`,
+            [newCommentId, comment.text, newCardId]
+          );
+        }
+      }
+    }
+    
+    await client.query('COMMIT');
+    
+    // Fetch the newly created card with its comments
+    const newCardWithComments = await Card.getWithComments(newCardId);
+    
+    res.status(201).json({
+      success: true,
+      data: newCardWithComments
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error in duplicateCard:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 // Toggle card hidden status

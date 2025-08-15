@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { toast } from 'react-toastify'
 
 const EditTierNameModal = ({ isOpen, onClose, currentName, onSave }) => {
   const [tierName, setTierName] = useState('')
@@ -17,12 +18,12 @@ const EditTierNameModal = ({ isOpen, onClose, currentName, onSave }) => {
     const trimmedName = tierName.trim()
     
     if (!trimmedName) {
-      alert('Tier name cannot be empty')
+      toast.error('Tier name cannot be empty')
       return
     }
 
     if (trimmedName.length > 10) {
-      alert('Tier name is too long. Must not be more than 10 characters.')
+      toast.error('Tier name is too long. Must not be more than 10 characters.')
       return
     }
 
@@ -32,7 +33,7 @@ const EditTierNameModal = ({ isOpen, onClose, currentName, onSave }) => {
       await onSave(trimmedName)
       onClose()
     } catch (error) {
-      alert('Failed to save tier name. Please try again.')
+      toast.error('Failed to save tier name. Please try again.')
     } finally {
       setIsSaving(false)
     }

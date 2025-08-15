@@ -9,8 +9,8 @@ export class Comment {
         comment_id as id,
         text,
         card_id as cardId,
-        created_at,
-        updated_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
+        to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "updatedAt"
       FROM comments 
       ORDER BY created_at DESC
     `;
@@ -26,8 +26,8 @@ export class Comment {
         comment_id as id,
         text,
         card_id as cardId,
-        created_at,
-        updated_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
+        to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "updatedAt"
       FROM comments 
       WHERE comment_id = $1
     `;
@@ -43,8 +43,8 @@ export class Comment {
         comment_id as id,
         text,
         card_id as cardId,
-        created_at,
-        updated_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
+        to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "updatedAt"
       FROM comments 
       WHERE card_id = $1
       ORDER BY created_at ASC
@@ -59,14 +59,14 @@ export class Comment {
     const { id, text, cardId } = commentData;
     
     const query = `
-      INSERT INTO comments (comment_id, text, card_id)
-      VALUES ($1, $2, $3)
+      INSERT INTO comments (comment_id, text, card_id, created_at, updated_at)
+      VALUES ($1, $2, $3, (NOW() AT TIME ZONE 'UTC'), (NOW() AT TIME ZONE 'UTC'))
       RETURNING 
         comment_id as id,
         text,
         card_id as cardId,
-        created_at,
-        updated_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "createdAt",
+        to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "updatedAt"
     `;
     
     const result = await pool.query(query, [id, text, cardId]);
@@ -81,14 +81,14 @@ export class Comment {
       UPDATE comments 
       SET 
         text = COALESCE($2, text),
-        updated_at = CURRENT_TIMESTAMP
+        updated_at = (NOW() AT TIME ZONE 'UTC')
       WHERE comment_id = $1
       RETURNING 
         comment_id as id,
         text,
         card_id as cardId,
-        created_at,
-        updated_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "createdAt",
+        to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "updatedAt"
     `;
     
     const result = await pool.query(query, [commentId, text]);
@@ -184,8 +184,8 @@ export class Comment {
         c.comment_id as id,
         c.text,
         c.card_id as cardId,
-        c.created_at,
-        c.updated_at,
+        to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "createdAt",
+        to_char(c.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "updatedAt",
         card.text as cardText,
         card.type as cardType
       FROM comments c
@@ -216,4 +216,46 @@ export class Comment {
     const result = await pool.query(sqlQuery, [`%${query}%`, limit]);
     return result.rows;
   }
+// Function to create a comment with preserved timestamps
+// Add this to Comment model (backend/models/Comment.js)
+
+// Add this method to the Comment class
+static async createWithTimestamp(commentData, originalTimestamp = null) {
+  const { id, text, cardId } = commentData;
+  
+  let query;
+  let params;
+  
+  if (originalTimestamp) {
+    // Use the original timestamp when duplicating
+    query = `
+      INSERT INTO comments (comment_id, text, card_id, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $4)
+      RETURNING 
+        comment_id as id,
+        text,
+        card_id as cardId,
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "createdAt",
+        to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "updatedAt"
+    `;
+    params = [id, text, cardId, originalTimestamp];
+  } else {
+    // Use current timestamp for new comments
+    query = `
+      INSERT INTO comments (comment_id, text, card_id, created_at, updated_at)
+      VALUES ($1, $2, $3, (NOW() AT TIME ZONE 'UTC'), (NOW() AT TIME ZONE 'UTC'))
+      RETURNING 
+        comment_id as id,
+        text,
+        card_id as cardId,
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "createdAt",
+        to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"') as "updatedAt"
+    `;
+    params = [id, text, cardId];
+  }
+  
+  const result = await pool.query(query, params);
+  return result.rows[0];
+}
+
 } 

@@ -168,6 +168,8 @@ export const moveTierPosition = asyncHandler(async (req, res) => {
 });
 
 // Duplicate tier
+// Fixed duplicateTier function in backend/controllers/tierController.js
+// Improved duplicateTier function with timestamp preservation
 export const duplicateTier = asyncHandler(async (req, res) => {
   const { id } = req.params;
   
@@ -184,37 +186,84 @@ export const duplicateTier = asyncHandler(async (req, res) => {
   const newTierName = `${originalTier.name} Copy`;
   const newTierPosition = await Tier.getNextPosition();
   
-  // Create new tier
-  const newTier = await Tier.create({
-    id: newTierId,
-    name: newTierName,
-    color: originalTier.color,
-    position: newTierPosition
-  });
+  const client = await pool.connect();
   
-  // Duplicate cards if any
-  if (originalTier.cards && originalTier.cards.length > 0) {
-    const cardsToCreate = originalTier.cards.map((card, index) => ({
-      id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      text: card.text,
-      type: card.type,
-      subtype: card.subtype,
-      imageUrl: card.imageUrl,
-      hidden: card.hidden || false,
-      tierId: newTierId,
-      position: index
-    }));
+  try {
+    await client.query('BEGIN');
     
-    await Card.bulkCreate(cardsToCreate);
+    // Create new tier
+    await client.query(
+      `INSERT INTO tiers (tier_id, name, color, position) 
+       VALUES ($1, $2, $3, $4)`,
+      [newTierId, newTierName, originalTier.color, newTierPosition]
+    );
+    
+    // Duplicate cards if any
+    if (originalTier.cards && originalTier.cards.length > 0) {
+      for (const card of originalTier.cards) {
+        // Create new card ID with a unique timestamp to avoid collisions
+        const newCardId = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Insert the duplicate card
+        await client.query(
+          `INSERT INTO cards (card_id, text, type, subtype, image_url, hidden, tier_id, position)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [newCardId, card.text, card.type, card.subtype, card.imageUrl, 
+           card.hidden || false, newTierId, card.position]
+        );
+        
+        // If the original card has comments, duplicate them too
+        if (card.comments && card.comments.length > 0) {
+          for (const comment of card.comments) {
+            // Create new comment ID
+            const newCommentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            // Try to preserve original comment timestamp for historical accuracy
+            let originalTimestamp = null;
+            try {
+              if (comment.createdAt) {
+                originalTimestamp = new Date(comment.createdAt);
+              }
+            } catch (e) {
+              console.error('Error parsing timestamp:', e);
+            }
+            
+            if (originalTimestamp && !isNaN(originalTimestamp.getTime())) {
+              // Use the timestamp from original comment
+              await client.query(
+                `INSERT INTO comments (comment_id, text, card_id, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $4)`,
+                [newCommentId, comment.text, newCardId, originalTimestamp]
+              );
+            } else {
+              // Fall back to current timestamp
+              await client.query(
+                `INSERT INTO comments (comment_id, text, card_id)
+                 VALUES ($1, $2, $3)`,
+                [newCommentId, comment.text, newCardId]
+              );
+            }
+          }
+        }
+      }
+    }
+    
+    await client.query('COMMIT');
+    
+    // Get the new tier with cards and comments
+    const newTierWithCards = await Tier.getWithCards(newTierId);
+    
+    res.status(201).json({
+      success: true,
+      data: newTierWithCards
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error in duplicateTier:', error);
+    throw error;
+  } finally {
+    client.release();
   }
-  
-  // Get the new tier with cards
-  const newTierWithCards = await Tier.getWithCards(newTierId);
-  
-  res.status(201).json({
-    success: true,
-    data: newTierWithCards
-  });
 });
 
 // Get tier statistics

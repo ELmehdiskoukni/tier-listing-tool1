@@ -29,6 +29,7 @@ const TierRow = ({
   const [isDragOver, setIsDragOver] = useState(false)
   const [dragOverPosition, setDragOverPosition] = useState(null) // 'start', 'middle', 'end'
   const [isRowHovered, setIsRowHovered] = useState(false)
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 192, positionAbove: false })
 
   // Handle clicking outside dropdown to close it
   useEffect(() => {
@@ -61,26 +62,56 @@ const TierRow = ({
     }
   }, [showAddDropdown])
 
-  // Calculate dropdown position for portal
-  const getDropdownPosition = () => {
+  // Calculate dropdown position for portal relative to the '+' button with smart placement
+  const computeDropdownPosition = () => {
     if (!dropdownRef.current) return null
-    
     const rect = dropdownRef.current.getBoundingClientRect()
-    const dropdownHeight = 200 // Approximate height of dropdown menu
+    const dropdownWidth = 192 // Tailwind w-48
+    const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
+
+    // Use actual rendered height if available, else a safe estimate
+    const measuredHeight = dropdownMenuRef.current ? dropdownMenuRef.current.offsetHeight : 200
+
     const spaceBelow = viewportHeight - rect.bottom
     const spaceAbove = rect.top
-    
-    // Check if there's enough space below, if not, position above
-    const shouldPositionAbove = spaceBelow < dropdownHeight && spaceAbove > dropdownHeight
-    
-    return {
-      top: shouldPositionAbove ? rect.top - dropdownHeight - 4 : rect.bottom + 4, // 4px gap
-      left: rect.right - 192, // 192px = w-48 (48 * 4px)
-      width: 192, // w-48
-      positionAbove: shouldPositionAbove
-    }
+    const shouldPositionAbove = spaceBelow < measuredHeight && spaceAbove > measuredHeight
+
+    let top = shouldPositionAbove ? rect.top - measuredHeight - 4 : rect.bottom + 4 // 4px gap
+    let left = rect.left // align to the left edge of the '+' button by default
+
+    // Keep within viewport horizontally
+    const minLeft = 8
+    const maxLeft = viewportWidth - dropdownWidth - 8
+    if (left < minLeft) left = minLeft
+    if (left > maxLeft) left = Math.max(maxLeft, minLeft)
+
+    return { top, left, width: dropdownWidth, positionAbove: shouldPositionAbove }
   }
+
+  // Reposition dropdown when opened and on scroll/resize to keep it close to the button
+  useEffect(() => {
+    if (!showAddDropdown) return
+
+    const update = () => {
+      const pos = computeDropdownPosition()
+      if (pos) setDropdownPosition(pos)
+    }
+
+    // Initial position
+    update()
+    // Recalculate after paint so we can use actual dropdown height
+    const raf = requestAnimationFrame(update)
+
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [showAddDropdown])
 
   const handleOptionsClick = () => {
     if (optionsButtonRef.current) {
@@ -94,7 +125,9 @@ const TierRow = ({
         buttonLeft: rect.left,
         buttonRight: rect.right,
         buttonWidth: rect.width,
-        buttonHeight: rect.height
+        buttonHeight: rect.height,
+        initialScrollX: window.scrollX,
+        initialScrollY: window.scrollY
       }
       onOpenOptionsMenu(position)
     }
@@ -311,19 +344,19 @@ const TierRow = ({
                   ref={dropdownMenuRef}
                   className="fixed bg-white border border-gray-200 rounded-md shadow-lg z-[999999999999]"
                   style={{
-                    top: getDropdownPosition()?.top || 0,
-                    left: getDropdownPosition()?.left || 0,
-                    width: getDropdownPosition()?.width || 192
+                    top: dropdownPosition.top,
+                    left: dropdownPosition.left,
+                    width: dropdownPosition.width
                   }}
                 >
                   {/* Dropdown arrow indicator */}
-                  <div 
+                  {/* <div 
                     className={`absolute w-3 h-3 bg-white border-l border-t border-gray-200 transform ${
-                      getDropdownPosition()?.positionAbove 
+                      dropdownPosition.positionAbove 
                         ? 'bottom-[-6px] left-4 rotate-45 border-r border-b' 
                         : 'top-[-6px] left-4 rotate-45 border-r border-b'
                     }`}
-                  />
+                  /> */}
                   <div className="py-1">
                     <button
                       type="button"

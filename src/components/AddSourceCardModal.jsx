@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { toast } from 'react-toastify'
 
 const AddSourceCardModal = ({ isOpen, onClose, onCreateCard, sourceType }) => {
   const [cardText, setCardText] = useState('')
@@ -76,6 +77,7 @@ const AddSourceCardModal = ({ isOpen, onClose, onCreateCard, sourceType }) => {
       // Try to find logos by searching for potential domain variations
       const searchTerms = [
         `${query.toLowerCase()}.com`,
+        `${query.toLowerCase()}.ma`,
         `${query.toLowerCase()}.io`,
         `${query.toLowerCase()}.org`,
         `${query.toLowerCase().replace(/\s+/g, '')}.com`
@@ -152,8 +154,8 @@ const AddSourceCardModal = ({ isOpen, onClose, onCreateCard, sourceType }) => {
   const handleFileUpload = (event) => {
     const file = event.target.files[0]
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { // 2MB limit
-        alert('File size must be less than 2MB')
+      if (file.size > 5 * 1024 * 1024) { // 2MB limit
+        toast.error('File size must be less than 2MB')
         return
       }
 
@@ -179,27 +181,27 @@ const AddSourceCardModal = ({ isOpen, onClose, onCreateCard, sourceType }) => {
     e.preventDefault()
     
     if (!cardText.trim()) {
-      alert('Please enter card text')
+      toast.error('Please enter card text')
       return
     }
 
     if (cardText.length < 2) {
-      alert('Text is too short. Must be at least 2 characters.')
+      toast.error('Text is too short. Must be at least 2 characters.')
       return
     }
 
     if (cardText.length > 20) {
-      alert('Text is too long. Must not be more than 20 characters.')
+      toast.error('Text is too long. Must not be more than 20 characters.')
       return
     }
 
     if (config.subtypes && !cardSubtype) {
-      alert('Please select a card type')
+      toast.error('Please select a card type')
       return
     }
 
     if (cardSubtype === 'image' && !selectedImage) {
-      alert('Please select an image for the image card')
+      toast.error('Please select an image for the image card')
       return
     }
 
@@ -220,7 +222,7 @@ const AddSourceCardModal = ({ isOpen, onClose, onCreateCard, sourceType }) => {
       setImagePreview(null)
       onClose()
     } catch (error) {
-      alert('Failed to create card. Please try again.')
+      toast.error('Failed to create card. Please try again.')
     } finally {
       setIsCreating(false)
     }
@@ -348,7 +350,7 @@ const AddSourceCardModal = ({ isOpen, onClose, onCreateCard, sourceType }) => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                       </svg>
                       <p className="text-sm text-gray-600 mt-1">Click to upload image</p>
-                      <p className="text-xs text-gray-500">PNG, JPG up to 2MB</p>
+                      <p className="text-xs text-gray-500">PNG, JPG up to 5MB</p>
                     </div>
                   </button>
                 </div>

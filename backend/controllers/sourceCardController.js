@@ -2,6 +2,7 @@ import { SourceCard } from '../models/SourceCard.js';
 import { Card } from '../models/Card.js';
 import { Tier } from '../models/Tier.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { pool } from '../config/database.js';
 
 // Get all source cards
 export const getAllSourceCards = asyncHandler(async (req, res) => {
@@ -101,6 +102,96 @@ export const deleteSourceCard = asyncHandler(async (req, res) => {
     message: 'Source card deleted successfully',
     data: result
   });
+});
+
+// Comments on source cards
+export const getSourceCommentsByCardId = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const card = await SourceCard.getById(id);
+  if (!card) {
+    return res.status(404).json({ success: false, error: 'Source card not found' });
+  }
+  const result = await pool.query(
+    `SELECT comment_id as id, text, source_card_id as sourceCardId, created_at, updated_at FROM source_comments WHERE source_card_id = $1 ORDER BY created_at ASC`,
+    [id]
+  );
+  res.json({ success: true, data: result.rows });
+});
+
+export const createSourceComment = asyncHandler(async (req, res) => {
+  const { id } = req.params; // source card id
+  const { text } = req.body;
+  const card = await SourceCard.getById(id);
+  if (!card) {
+    return res.status(404).json({ success: false, error: 'Source card not found' });
+  }
+  const commentId = `source-comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const result = await pool.query(
+    `INSERT INTO source_comments (comment_id, text, source_card_id) VALUES ($1, $2, $3) RETURNING comment_id as id, text, source_card_id as sourceCardId, created_at, updated_at`,
+    [commentId, text, id]
+  );
+  res.status(201).json({ success: true, data: result.rows[0] });
+});
+
+export const deleteSourceComment = asyncHandler(async (req, res) => {
+  const { commentId } = req.params;
+  const result = await pool.query(`DELETE FROM source_comments WHERE comment_id = $1 RETURNING comment_id`, [commentId]);
+  if (result.rows.length === 0) {
+    return res.status(404).json({ success: false, error: 'Comment not found' });
+  }
+  res.json({ success: true, message: 'Comment deleted successfully' });
+});
+
+// Toggle hidden flag for all tier card instances that reference a source card
+export const toggleSourceInstancesHidden = asyncHandler(async (req, res) => {
+  const { id } = req.params; // source card id
+
+  // Ensure source card exists
+  const sourceCard = await SourceCard.getById(id);
+  if (!sourceCard) {
+    return res.status(404).json({ success: false, error: 'Source card not found' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Determine current hidden state across all matching tier cards
+    const statsResult = await client.query(
+      `SELECT COUNT(*)::int as total,
+              COALESCE(SUM(CASE WHEN hidden THEN 1 ELSE 0 END), 0)::int as hidden_count
+         FROM cards
+        WHERE text = $1 AND type = $2`,
+      [sourceCard.text, sourceCard.type]
+    );
+
+    const total = statsResult.rows[0]?.total || 0;
+    const hiddenCount = statsResult.rows[0]?.hidden_count || 0;
+    const shouldHide = hiddenCount < total; // if any visible, hide all; else show all
+
+    // Update tier card instances
+    await client.query(
+      `UPDATE cards SET hidden = $1, updated_at = CURRENT_TIMESTAMP WHERE text = $2 AND type = $3`,
+      [shouldHide, sourceCard.text, sourceCard.type]
+    );
+
+    // Reflect hidden state on the source card itself for UI styling
+    await client.query(
+      `UPDATE source_cards SET hidden = $1, updated_at = CURRENT_TIMESTAMP WHERE card_id = $2`,
+      [shouldHide, id]
+    );
+
+    await client.query('COMMIT');
+
+    // Return updated tiers so frontend can refresh board
+    const updatedTiers = await Tier.getAllWithCards();
+    res.json({ success: true, data: updatedTiers });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 // Search source cards

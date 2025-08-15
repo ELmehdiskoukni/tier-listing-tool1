@@ -6,16 +6,30 @@ export class SourceCard {
   static async getAll() {
     const query = `
       SELECT 
-        card_id as "id",
-        text,
-        type,
-        subtype,
-        source_category as "sourceCategory",
-        image_url as "imageUrl",
-        created_at,
-        updated_at
-      FROM source_cards 
-      ORDER BY source_category, created_at ASC
+        sc.card_id as "id",
+        sc.text,
+        sc.type,
+        sc.subtype,
+        sc.source_category as "sourceCategory",
+        sc.image_url as "imageUrl",
+        sc.created_at,
+        sc.updated_at,
+        sc.hidden,
+        json_agg(
+          CASE 
+            WHEN scm.comment_id IS NOT NULL THEN
+              json_build_object(
+                'id', scm.comment_id,
+                'text', scm.text,
+                'createdAt', scm.created_at
+              )
+            ELSE NULL
+          END
+        ) FILTER (WHERE scm.comment_id IS NOT NULL) as comments
+      FROM source_cards sc
+      LEFT JOIN source_comments scm ON sc.card_id = scm.source_card_id
+      GROUP BY sc.card_id, sc.text, sc.type, sc.subtype, sc.source_category, sc.image_url, sc.created_at, sc.updated_at, sc.hidden
+      ORDER BY sc.source_category, sc.created_at ASC
     `;
     
     const result = await pool.query(query);
@@ -26,17 +40,31 @@ export class SourceCard {
   static async getByCategory(category) {
     const query = `
       SELECT 
-        card_id as "id",
-        text,
-        type,
-        subtype,
-        source_category as "sourceCategory",
-        image_url as "imageUrl",
-        created_at,
-        updated_at
-      FROM source_cards 
-      WHERE source_category = $1
-      ORDER BY created_at ASC
+        sc.card_id as "id",
+        sc.text,
+        sc.type,
+        sc.subtype,
+        sc.source_category as "sourceCategory",
+        sc.image_url as "imageUrl",
+        sc.created_at,
+        sc.updated_at,
+        sc.hidden,
+        json_agg(
+          CASE 
+            WHEN scm.comment_id IS NOT NULL THEN
+              json_build_object(
+                'id', scm.comment_id,
+                'text', scm.text,
+                'createdAt', scm.created_at
+              )
+            ELSE NULL
+          END
+        ) FILTER (WHERE scm.comment_id IS NOT NULL) as comments
+      FROM source_cards sc
+      LEFT JOIN source_comments scm ON sc.card_id = scm.source_card_id
+      WHERE sc.source_category = $1
+      GROUP BY sc.card_id, sc.text, sc.type, sc.subtype, sc.source_category, sc.image_url, sc.created_at, sc.updated_at, sc.hidden
+      ORDER BY sc.created_at ASC
     `;
     
     const result = await pool.query(query, [category]);
@@ -47,16 +75,30 @@ export class SourceCard {
   static async getById(cardId) {
     const query = `
       SELECT 
-        card_id as "id",
-        text,
-        type,
-        subtype,
-        source_category as "sourceCategory",
-        image_url as "imageUrl",
-        created_at,
-        updated_at
-      FROM source_cards 
-      WHERE card_id = $1
+        sc.card_id as "id",
+        sc.text,
+        sc.type,
+        sc.subtype,
+        sc.source_category as "sourceCategory",
+        sc.image_url as "imageUrl",
+        sc.created_at,
+        sc.updated_at,
+        sc.hidden,
+        json_agg(
+          CASE 
+            WHEN scm.comment_id IS NOT NULL THEN
+              json_build_object(
+                'id', scm.comment_id,
+                'text', scm.text,
+                'createdAt', scm.created_at
+              )
+            ELSE NULL
+          END
+        ) FILTER (WHERE scm.comment_id IS NOT NULL) as comments
+      FROM source_cards sc
+      LEFT JOIN source_comments scm ON sc.card_id = scm.source_card_id
+      WHERE sc.card_id = $1
+      GROUP BY sc.card_id, sc.text, sc.type, sc.subtype, sc.source_category, sc.image_url, sc.created_at, sc.updated_at, sc.hidden
     `;
     
     const result = await pool.query(query, [cardId]);
@@ -161,22 +203,36 @@ export class SourceCard {
   static async getAllGroupedByCategory() {
     const query = `
       SELECT 
-        source_category as category,
+        sc.source_category as category,
         json_agg(
           json_build_object(
-            'id', card_id,
-            'text', text,
-            'type', type,
-            'subtype', subtype,
-            'sourceCategory', source_category,
-            'imageUrl', image_url,
-            'createdAt', created_at,
-            'updatedAt', updated_at
+            'id', sc.card_id,
+            'text', sc.text,
+            'type', sc.type,
+            'subtype', sc.subtype,
+            'sourceCategory', sc.source_category,
+            'imageUrl', sc.image_url,
+            'createdAt', sc.created_at,
+            'updatedAt', sc.updated_at,
+            'hidden', sc.hidden,
+            'comments', COALESCE(comments.comments, '[]'::json)
           )
         ) as cards
-      FROM source_cards 
-      GROUP BY source_category
-      ORDER BY source_category
+      FROM source_cards sc
+      LEFT JOIN LATERAL (
+        SELECT json_agg(
+          json_build_object(
+            'id', scm.comment_id,
+            'text', scm.text,
+            'createdAt', scm.created_at
+          )
+          ORDER BY scm.created_at ASC
+        ) as comments
+        FROM source_comments scm
+        WHERE scm.source_card_id = sc.card_id
+      ) comments ON true
+      GROUP BY sc.source_category
+      ORDER BY sc.source_category
     `;
     
     const result = await pool.query(query);

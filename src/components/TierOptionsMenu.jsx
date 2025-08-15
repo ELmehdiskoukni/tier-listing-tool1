@@ -26,61 +26,56 @@ const TierOptionsMenu = ({
     { name: 'Pink', value: 'bg-pink-200', preview: 'bg-pink-200' }
   ]
 
-  // Calculate smart positioning to keep menu within viewport
+  // Calculate smart positioning to keep menu anchored to the clicked button
   const calculateSmartPosition = () => {
-    if (!position) return { top: 0, right: 0 }
+    if (!position) return { top: 0, left: 0, positionAbove: false }
 
     const viewportHeight = window.innerHeight
     const viewportWidth = window.innerWidth
-    const menuHeight = 280 // Approximate height of the menu (including all options)
-    const menuWidth = 192 // w-48 = 48 * 4px = 192px
-    const padding = 10 // Minimum distance from viewport edges
+    const menuWidth = 192 // w-48 = 192px
+    const padding = 10
 
-    // Calculate available space
-    const spaceBelow = viewportHeight - position.top
-    const spaceAbove = position.top
-    const spaceRight = position.right
-    const spaceLeft = viewportWidth - position.right
+    // Determine menu height using measurement if available to be more accurate
+    const measuredHeight = menuRef.current ? menuRef.current.offsetHeight : 280
 
-    // Determine vertical positioning
-    let top
-    let positionAbove = false
-    
-    if (spaceBelow >= menuHeight + padding) {
-      // Enough space below - position below the trigger
-      top = position.top + 5 // 5px gap from trigger
-    } else if (spaceAbove >= menuHeight + padding) {
-      // Not enough space below, but enough above - position above the trigger
-      top = position.top - menuHeight - 5 // 5px gap from trigger
-      positionAbove = true
-    } else {
-      // Not enough space in either direction - position as close as possible
-      if (spaceBelow > spaceAbove) {
-        top = Math.max(padding, viewportHeight - menuHeight - padding)
-      } else {
-        top = Math.max(padding, position.top - menuHeight - 5)
-        positionAbove = true
-      }
-    }
+    // Reconstruct the trigger rect using initial scroll offsets to anchor to the original button
+    const initialScrollX = position.initialScrollX || 0
+    const initialScrollY = position.initialScrollY || 0
+    const currentScrollX = window.scrollX
+    const currentScrollY = window.scrollY
 
-    // Determine horizontal positioning
-    let right
-    if (spaceRight >= menuWidth + padding) {
-      // Enough space to the right - align with trigger
-      right = position.right
-    } else if (spaceLeft >= menuWidth + padding) {
-      // Not enough space to the right, but enough to the left
-      right = menuWidth + padding
-    } else {
-      // Not enough space on either side - center the menu
-      right = (viewportWidth - menuWidth) / 2
-    }
+    // Adjust top/left by scroll delta to keep anchored to the same button as the user scrolls
+    const deltaX = currentScrollX - initialScrollX
+    const deltaY = currentScrollY - initialScrollY
 
-    return {
-      top: Math.max(padding, Math.min(top, viewportHeight - menuHeight - padding)),
-      right: Math.max(padding, Math.min(right, viewportWidth - menuWidth - padding)),
-      positionAbove
-    }
+    const triggerTop = (position.buttonBottom ?? position.top) + deltaY
+    const triggerLeft = (position.buttonLeft ?? (viewportWidth - position.right - menuWidth)) + deltaX
+
+    // Decide above/below
+    const spaceBelow = viewportHeight - (position.buttonBottom ?? position.top)
+    const spaceAbove = (position.buttonTop ?? position.top)
+    const shouldPositionAbove = spaceBelow < measuredHeight && spaceAbove > measuredHeight
+
+    let top = shouldPositionAbove
+      ? (position.buttonTop ?? triggerTop) - measuredHeight - 5 + deltaY
+      : triggerTop + 5
+
+    // Prefer aligning right edge of menu with the button's right edge so it feels attached
+    let left = (position.buttonRight ?? (triggerLeft + menuWidth)) - menuWidth + deltaX
+
+    // Clamp within viewport
+    const minLeft = padding
+    const maxLeft = viewportWidth - menuWidth - padding
+    if (left < minLeft) left = minLeft
+    if (left > maxLeft) left = Math.max(maxLeft, minLeft)
+
+    // Also clamp vertical into viewport
+    const minTop = padding
+    const maxTop = viewportHeight - measuredHeight - padding
+    if (top < minTop) top = minTop
+    if (top > maxTop) top = Math.max(maxTop, minTop)
+
+    return { top, left, positionAbove: shouldPositionAbove }
   }
 
   // Close menu when clicking outside
@@ -117,7 +112,7 @@ const TierOptionsMenu = ({
       className="fixed bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-xl py-2 w-48 z-[99999999999] transform transition-all duration-200 ease-out"
       style={{
         top: smartPosition.top,
-        right: smartPosition.right,
+        left: smartPosition.left,
         maxHeight: 'calc(100vh - 20px)', // Ensure it doesn't exceed viewport
         overflowY: 'auto' // Add scroll if needed
       }}
@@ -126,19 +121,13 @@ const TierOptionsMenu = ({
       {smartPosition.positionAbove && (
         <div 
           className="absolute w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-200"
-          style={{
-            bottom: '-4px',
-            right: '16px'
-          }}
+          style={{ bottom: '-4px', left: '16px' }}
         />
       )}
       {!smartPosition.positionAbove && (
         <div 
           className="absolute w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-200"
-          style={{
-            top: '-4px',
-            right: '16px'
-          }}
+          style={{ top: '-4px', left: '16px' }}
         />
       )}
 

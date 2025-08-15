@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { toast } from 'react-toastify'
 
 const CardCreationModal = ({ isOpen, onClose, onCreateCard, tierName }) => {
   const [selectedType, setSelectedType] = useState('')
@@ -18,17 +19,17 @@ const CardCreationModal = ({ isOpen, onClose, onCreateCard, tierName }) => {
     e.preventDefault()
     
     if (!selectedType || !cardText.trim()) {
-      alert('Please select a card type and enter text')
+      toast.error('Please select a card type and enter text')
       return
     }
 
     if (cardText.length < 2) {
-      alert('Text is too short. Must be at least 2 characters.')
+      toast.error('Text is too short. Must be at least 2 characters.')
       return
     }
 
     if (cardText.length > 20) {
-      alert('Text is too long. Must not be more than 20 characters.')
+      toast.error('Text is too long. Must not be more than 20 characters.')
       return
     }
 
@@ -44,7 +45,7 @@ const CardCreationModal = ({ isOpen, onClose, onCreateCard, tierName }) => {
       setSelectedType('')
       onClose()
     } catch (error) {
-      alert('Failed to create card. Please try again.')
+      toast.error('Failed to create card. Please try again.')
     } finally {
       setIsCreating(false)
     }
