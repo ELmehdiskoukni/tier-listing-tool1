@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react'
+import { toast } from 'react-toastify'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType } from 'docx'
@@ -71,12 +72,12 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
           const isDeletedSource = isCardFromDeletedSource(card)
           
           cardElement.className = `bg-white border border-gray-300 rounded-lg p-3 shadow-sm min-w-[120px] max-w-[200px] relative ${
-            isDeletedSource ? 'bg-gray-200 border-gray-400' : ''
+            isDeletedSource || card.hidden ? 'bg-gray-200 border-gray-400' : ''
           }`
           
           let cardContent = `<div class="font-medium text-gray-800 mb-1 ${
-            isDeletedSource ? 'text-gray-500 italic line-through' : ''
-          }">${isDeletedSource ? 'This item is deleted' : card.text}</div>`
+            isDeletedSource || card.hidden ? 'text-gray-500 italic line-through' : ''
+          }">${isDeletedSource ? 'This item is deleted' : card.hidden ? 'This item is hidden' : card.text}</div>`
           
           if (exportOptions.includeComments && card.comments && card.comments.length > 0) {
             cardContent += `<div class="text-xs text-gray-500">${card.comments.length} comment${card.comments.length > 1 ? 's' : ''}</div>`
@@ -158,12 +159,12 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
       }
       
       // Clean up the temporary element
-      if (exportElement && exportElement.parentNode) {
+    if (exportElement && exportElement.parentNode) {
         exportElement.parentNode.removeChild(exportElement)
       }
     } catch (error) {
       console.error('Export failed:', error)
-      alert('Export failed. Please try again.')
+    toast.error('Export failed. Please try again.')
     } finally {
       setIsExporting(false)
     }

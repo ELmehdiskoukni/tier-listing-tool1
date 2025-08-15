@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { toast as toastify } from 'react-toastify'
 import TierRow from './TierRow'
 import CardCreationModal from './CardCreationModal'
 import EditTierNameModal from './EditTierNameModal'
@@ -14,8 +15,9 @@ import ChangeImageModal from './ChangeImageModal'
 import ImportCardsModal from './ImportCardsModal'
 import ExportModal from './ExportModal'
 import PickAnotherPersonaModal from './PickAnotherPersonaModal'
+import UndoRedoButtons from './UndoRedoButtons'
 import { useTierBoard } from '../hooks/useTierBoard'
-import { tierAPI } from '../api/apiClient'
+import { tierAPI, sourceCardAPI } from '../api/apiClient'
 
 const TierBoard = () => {
   // Use the API hook for data management
@@ -47,10 +49,22 @@ const TierBoard = () => {
     deleteComment,
     createVersion,
     restoreVersion,
+    deleteVersion,
     importCardsToTier,
     clearError,
     refreshData,
-    deleteCardsAndTier
+    deleteCardsAndTier,
+    // Undo/Redo functionality
+    handleUndo,
+    handleRedo,
+    canUndo,
+    canRedo,
+    getNextUndoDescription,
+    getNextRedoDescription,
+    isPerformingAction,
+    toast,
+    setNextAutosaveDescription,
+    clearToast
   } = useTierBoard()
 
   // Modal state for card creation
@@ -102,19 +116,9 @@ const TierBoard = () => {
 
   // Version History State
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
+  const currentVersionRef = useRef(null)
 
-  // Save version after significant changes
-  const saveVersion = async (description) => {
-    try {
-      await createVersion({
-        description,
-        tiersData: JSON.parse(JSON.stringify(tiers)),
-        sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
-      })
-    } catch (err) {
-      console.error('Failed to save version:', err)
-    }
-  }
+  // Manual version saving is now handled by autosave in the hook
 
   // Restore version
   const handleRestoreVersion = async (versionId) => {
@@ -140,8 +144,7 @@ const TierBoard = () => {
         setTimeout(() => setError(null), 5000)
       } else {
         // Show success message
-        setError('Version restored successfully!')
-        setTimeout(() => setError(null), 3000)
+        toastify.success('Version restored successfully!')
       }
       
       // Close version history modal if open
@@ -158,10 +161,31 @@ const TierBoard = () => {
     }
   }
 
+  // When opening the Version History, bring the current version into view and focus it
+  // Robustly bring current version into view when the modal opens
+  const scrollCurrentVersionIntoView = () => {
+    // Use rAF to wait until the list is painted
+    requestAnimationFrame(() => {
+      if (currentVersionRef.current) {
+        try {
+          currentVersionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          currentVersionRef.current.focus({ preventScroll: true })
+        } catch (e) {}
+      }
+    })
+  }
+
+  useEffect(() => {
+    if (isVersionHistoryOpen && currentVersionIndex >= 0) {
+      scrollCurrentVersionIntoView()
+    }
+  }, [isVersionHistoryOpen, currentVersionIndex, versionHistory.length])
+
   // Check if a card references a deleted source item
   const isCardFromDeletedSource = (card) => {
-    // Only check cards that are from source areas (competitor, page, personas)
-    if (!(card.type === 'competitor' || card.type === 'page' || card.type === 'personas')) {
+    // Only apply deleted-source logic to items that explicitly originate from a source area
+    // Duplicated or regular tier cards should NOT be considered linked to source items
+    if (!card || !card.sourceCategory) {
       return false
     }
 
@@ -171,13 +195,10 @@ const TierBoard = () => {
       ...(sourceCards.pages || []),
       ...(sourceCards.personas || [])
     ]
-    
-    // Check if there's a matching source card with the same text and type
-    const matchingSourceCard = allSourceCards.find(sourceCard => 
-      sourceCard.text === card.text && sourceCard.type === card.type
-    )
-    
-    // If no matching source card is found, this card references a deleted source item
+
+    // A card truly references a deleted source item only if it carries a sourceCategory
+    // and there is no matching source card remaining with the same id
+    const matchingSourceCard = allSourceCards.find(sourceCard => sourceCard.id === card.id)
     return !matchingSourceCard
   }
 
@@ -203,20 +224,15 @@ const TierBoard = () => {
       ...(sourceCards.pages || []),
       ...(sourceCards.personas || [])
     ]
-    
-    return (version.tiers || []).some(tier => 
+
+    return (version.tiers || []).some(tier =>
       (tier.cards || []).some(card => {
-        // Only check cards that are from source areas
-        if (card.type === 'competitor' || card.type === 'page' || card.type === 'personas') {
-          // Check if there's a matching source card with the same text and type
-          const matchingSourceCard = allSourceCards.find(sourceCard => 
-            sourceCard.text === card.text && sourceCard.type === card.type
-          )
-          
-          // If no matching source card is found, this card references a deleted source item
-          return !matchingSourceCard
-        }
-        return false
+        // Only consider cards that explicitly originate from source areas
+        if (!card.sourceCategory) return false
+
+        // Only treat as deleted if the exact source card id is missing from current sources
+        const matchingSourceCard = allSourceCards.find(sourceCard => sourceCard.id === card.id)
+        return !matchingSourceCard
       })
     )
   }
@@ -235,8 +251,9 @@ const TierBoard = () => {
 
   const moveTierUp = async (tierId) => {
     try {
+      const tier = tiers.find(t => t.id === tierId);
       await moveTierPosition(tierId, 'up')
-      await saveVersion(`Moved tier up`)
+      setNextAutosaveDescription(`Moved tier ${tier?.name || 'tier'} up`)
     } catch (err) {
       console.error('Failed to move tier up:', err)
     }
@@ -244,8 +261,9 @@ const TierBoard = () => {
 
   const moveTierDown = async (tierId) => {
     try {
+      const tier = tiers.find(t => t.id === tierId);
       await moveTierPosition(tierId, 'down')
-      await saveVersion(`Moved tier down`)
+      setNextAutosaveDescription(`Moved tier ${tier?.name || 'tier'} down`)
     } catch (err) {
       console.error('Failed to move tier down:', err)
     }
@@ -280,11 +298,14 @@ const TierBoard = () => {
     }
 
     try {
+      const tier = tiers.find(t => t.id === selectedTierId);
       console.log('🔍 About to call createCard with tierId:', selectedTierId)
       await createCard({
         ...cardData,
         tierId: selectedTierId
       })
+      
+      setNextAutosaveDescription(`Added card '${cardData.text}' to tier ${tier?.name || 'tier'}`)
       
       console.log('🔍 createCard completed successfully')
       console.log('🔍 Current tiers after createCard:', tiers)
@@ -309,16 +330,15 @@ const TierBoard = () => {
         sourceCardIds: sourceCardIds
       })
       
-      // Save version after importing cards
       const targetTier = tiers.find(tier => tier.id === selectedTierForImport)
-      const tierName = targetTier?.name || ''
       const cardNames = selectedCardsData.map(selection => {
         const sourceCard = (sourceCards[selection.sourceCategory] || []).find(
           card => card.id === selection.cardId
         )
         return sourceCard?.text || ''
       }).join(', ')
-      await saveVersion(`Imported ${selectedCardsData.length} cards (${cardNames}) to tier ${tierName}`)
+      
+      setNextAutosaveDescription(`Imported ${selectedCardsData.length} cards (${cardNames}) to tier ${targetTier?.name || 'tier'}`)
     } catch (err) {
       console.error('Failed to import cards:', err)
     }
@@ -337,8 +357,8 @@ const TierBoard = () => {
 
   // Drag and Drop handlers
   const handleDragStart = (card) => {
-    // Don't allow dragging cards from deleted sources
-    if (isCardFromDeletedSource(card)) {
+    // Don't allow dragging cards from deleted sources or hidden cards
+    if (isCardFromDeletedSource(card) || card.hidden) {
       return
     }
     setDraggedCard(card)
@@ -379,22 +399,21 @@ const TierBoard = () => {
           tierId: targetTierId,
           position: position
         })
+        const targetTier = tiers.find(tier => tier.id === targetTierId)
+        setNextAutosaveDescription(`Added card '${cardData.text}' to tier ${targetTier?.name || 'tier'}`)
       } else {
         // Moving between tiers
         await moveCard(cardData.id, {
           targetTierId,
           position: position
         })
+        
+        const sourceTier = tiers.find(tier => 
+          (tier?.cards || []).some(card => card.id === cardData.id)
+        )
+        const targetTier = tiers.find(tier => tier.id === targetTierId)
+        setNextAutosaveDescription(`Moved card '${cardData.text}' from ${sourceTier?.name || 'tier'} to ${targetTier?.name || 'tier'}`)
       }
-      
-      // Save version after moving card
-      const sourceTier = tiers.find(tier => 
-        (tier?.cards || []).some(card => card.id === cardData.id)
-      )
-      const targetTier = tiers.find(tier => tier.id === targetTierId)
-      const sourceTierName = sourceTier?.name || 'source'
-      const targetTierName = targetTier?.name || ''
-      await saveVersion(`Moved card "${cardData.text}" from ${sourceTierName} to ${targetTierName}`)
     } catch (err) {
       console.error('Failed to move card:', err)
     }
@@ -415,8 +434,7 @@ const TierBoard = () => {
         sourceCategory: selectedSourceType
       })
       
-      // Save version after creating source card
-      await saveVersion(`Added source card "${cardData.text}" to ${selectedSourceType}`)
+      setNextAutosaveDescription(`Added source card '${cardData.text}' to ${selectedSourceType}`)
     } catch (err) {
       console.error('Failed to create source card:', err)
     }
@@ -439,8 +457,14 @@ const TierBoard = () => {
 
   // Card context menu functions
   const handleCardRightClick = (card, position) => {
-    // Don't show context menu for cards from deleted sources
+    // Don't show context menu for cards that reference deleted source items
     if (isCardFromDeletedSource(card)) {
+      return
+    }
+
+    // Allow context menu on hidden source cards (so user can unhide),
+    // but keep blocking it for hidden tier cards
+    if (card.hidden && !isCardInSourceArea(card)) {
       return
     }
 
@@ -460,16 +484,28 @@ const TierBoard = () => {
   }
 
   const handleEditCard = (card) => {
+    // Don't allow editing hidden cards
+    if (card.hidden) {
+      return
+    }
     setSelectedCardForOperation(card)
     setIsEditCardModalOpen(true)
   }
 
   const handleDeleteCard = (card) => {
+    // Don't allow deleting hidden cards
+    if (card.hidden) {
+      return
+    }
     setSelectedCardForOperation(card)
     setIsDeleteCardModalOpen(true)
   }
 
   const handleDuplicateCard = async (card) => {
+    // Don't allow duplicating hidden cards
+    if (card.hidden) {
+      return
+    }
     try {
       // Find which tier or source area contains this card
       let foundInSource = false
@@ -485,15 +521,22 @@ const TierBoard = () => {
       }
 
       if (foundInSource) {
-        // Duplicate in source area
-        await createSourceCard({
-          ...card,
-          text: `${card.text} Copy`,
-          sourceCategory,
-          comments: [] // Don't copy comments
-        })
+        // If the card is from a source area, duplicating as a tier card should create a normal tier card copy
+        // Create a tier-only card in the same tier as the current context if available
+        const tierContainingCard = (tiers || []).find(t => (t.cards || []).some(c => c.id === card.id))
+        const targetTierId = tierContainingCard ? tierContainingCard.id : (tiers[0]?.id)
+        if (targetTierId) {
+          await createCard({
+            text: card.text,
+            type: card.type,
+            subtype: card.subtype,
+            imageUrl: card.imageUrl || card.image,
+            hidden: false,
+            tierId: targetTierId
+          })
+        }
       } else {
-        // Duplicate in tier
+        // Duplicate in tier via backend endpoint that creates an independent tier card copy
         await duplicateCard(card.id)
       }
     } catch (err) {
@@ -502,24 +545,43 @@ const TierBoard = () => {
   }
 
   const handleAddCommentToCard = (card) => {
+    // Don't allow adding comments to hidden cards
+    if (card.hidden) {
+      return
+    }
     setSelectedCardForOperation(card)
     setIsAddCommentModalOpen(true)
   }
 
   const handleToggleCardHidden = async (card) => {
     try {
-      await toggleCardHidden(card.id)
+      if (isCardInSourceArea(card)) {
+        // Cascade toggle for all tier instances of this source card
+        await sourceCardAPI.toggleHiddenForInstances(card.id)
+        // Refresh tiers after cascading change
+        await refreshData()
+      } else {
+        await toggleCardHidden(card.id)
+      }
     } catch (err) {
       console.error('Failed to toggle card hidden status:', err)
     }
   }
 
   const handleChangeCardImage = (card) => {
+    // Don't allow changing image of hidden cards
+    if (card.hidden) {
+      return
+    }
     setSelectedCardForOperation(card)
     setIsChangeImageModalOpen(true)
   }
 
   const handleRemoveImage = async (card) => {
+    // Don't allow removing image from hidden cards
+    if (card.hidden) {
+      return
+    }
     try {
       // Remove image and convert card back to text type
       await updateCardProperty(card, { 
@@ -528,14 +590,17 @@ const TierBoard = () => {
         subtype: 'text' // Convert from 'image' to 'text' type
       })
       
-      // Save version after removing image
-      await saveVersion(`Removed image from card "${card.text}"`)
+      setNextAutosaveDescription(`Removed image from card '${card.text}'`)
     } catch (err) {
       console.error('Failed to remove image:', err)
     }
   }
 
   const handlePickAnotherPersona = (card) => {
+    // Don't allow picking another persona for hidden cards
+    if (card.hidden) {
+      return
+    }
     setSelectedCardForOperation(card)
     setIsPickAnotherPersonaModalOpen(true)
   }
@@ -556,15 +621,21 @@ const TierBoard = () => {
         hidden: currentCard.hidden
       })
       
-      // Save version after changing persona
-      await saveVersion(`Changed persona from "${currentCard.text}" to "${newPersona.text}"`)
+      setNextAutosaveDescription(`Changed persona from '${currentCard.text}' to '${newPersona.text}'`)
     } catch (err) {
       console.error('Failed to change persona:', err)
     }
   }
 
   const handleSaveImage = async (card, newImageUrl) => {
+    // Don't allow saving image for hidden cards
+    if (card.hidden) {
+      return
+    }
     try {
+      console.log('🔍 handleSaveImage - card:', card)
+      console.log('🔍 handleSaveImage - newImageUrl:', newImageUrl)
+      console.log('🔍 handleSaveImage - updates object:', { imageUrl: newImageUrl })
       await updateCardProperty(card, { imageUrl: newImageUrl })
     } catch (err) {
       console.error('Failed to save image:', err)
@@ -573,6 +644,10 @@ const TierBoard = () => {
 
   // Save edited card
   const handleSaveEditedCard = async (card, updates) => {
+    // Don't allow saving edits for hidden cards
+    if (card.hidden) {
+      return
+    }
     try {
       await updateCardProperty(card, updates)
     } catch (err) {
@@ -582,6 +657,10 @@ const TierBoard = () => {
 
   // Add comment to card
   const handleSaveComment = async (card, comment, updatedComments = null) => {
+    // Don't allow adding/removing comments for hidden cards
+    if (card.hidden) {
+      return
+    }
     try {
       if (updatedComments !== null) {
         // This is a comment deletion - find the deleted comment and use the proper API
@@ -625,18 +704,15 @@ const TierBoard = () => {
         // Remove from source area and cascade delete from tiers
         await deleteSourceCard(card.id, sourceCategory)
         
-        // Save version after cascade delete
-        await saveVersion(`Deleted source item "${card.text}" and related tier cards`)
+        setNextAutosaveDescription(`Deleted source item '${card.text}' and related tier cards`)
       } else {
         // Remove from tier
         await deleteCard(card.id)
         
-        // Save version after tier card deletion
         const tierWithCard = tiers.find(tier => 
           (tier.cards || []).some(c => c.id === card.id)
         )
-        const tierName = tierWithCard?.name || ''
-        await saveVersion(`Deleted card "${card.text}" from tier ${tierName}`)
+        setNextAutosaveDescription(`Deleted card '${card.text}' from tier ${tierWithCard?.name || 'tier'}`)
       }
     } catch (err) {
       console.error('Failed to delete card:', err)
@@ -659,9 +735,13 @@ const TierBoard = () => {
       }
 
       if (foundInSource) {
-        // Update in source area
+        // Update in source area - only send the updates, not the entire card object
+        console.log('🔍 updateCardProperty - foundInSource, updates:', updates)
+        console.log('🔍 updateCardProperty - sending to updateSourceCard:', {
+          ...updates,
+          sourceCategory
+        })
         await updateSourceCard(targetCard.id, {
-          ...targetCard,
           ...updates,
           sourceCategory
         })
@@ -725,7 +805,9 @@ const TierBoard = () => {
 
   const changeTierColor = async (tierId, newColor) => {
     try {
+      const tier = tiers.find(t => t.id === tierId);
       await updateTier(tierId, { color: newColor })
+      setNextAutosaveDescription(`Changed tier ${tier?.name || 'tier'} color to ${newColor.replace('bg-', '').replace('-200', '')}`)
     } catch (err) {
       console.error('Failed to change tier color:', err)
     }
@@ -737,8 +819,7 @@ const TierBoard = () => {
     try {
       await updateTier(selectedTierForEdit.id, { name: newName })
       
-      // Save version after renaming tier
-      await saveVersion(`Renamed tier from "${selectedTierForEdit.name}" to "${newName}"`)
+      setNextAutosaveDescription(`Renamed tier from '${selectedTierForEdit.name}' to '${newName}'`)
     } catch (err) {
       console.error('Failed to save tier name:', err)
     }
@@ -747,8 +828,7 @@ const TierBoard = () => {
   const handleDuplicateTier = async (tierId) => {
     try {
       await duplicateTier(tierId)
-      setError('Tier duplicated successfully!')
-      setTimeout(() => setError(null), 3000) // Clear success message after 3 seconds
+      toastify.success('Tier duplicated successfully!')
     } catch (err) {
       console.error('Failed to duplicate tier:', err)
     }
@@ -783,9 +863,9 @@ const TierBoard = () => {
 
     try {
       await deleteCardsAndTier(selectedTierForEdit.id)
-      await saveVersion(`Deleted all cards in tier "${selectedTierForEdit.name}" and deleted the tier`)
-      setError('Cards and tier deleted successfully!')
-      setTimeout(() => setError(null), 3000) // Clear success message after 3 seconds
+      setNextAutosaveDescription(`Deleted tier ${selectedTierForEdit.name} and its cards`)
+      // Autosave will capture this change
+      toastify.success('Cards and tier deleted successfully!')
     } catch (err) {
       console.error('Failed to delete cards and tier:', err)
       throw err // Re-throw to let the modal handle the error
@@ -858,9 +938,8 @@ const TierBoard = () => {
       console.log('🔍 New tier data to send:', newTierData)
 
       await createTier(newTierData)
-
-      // Save version after adding tier
-      await saveVersion(`Added new tier "${newTierData.name}"`)
+      setNextAutosaveDescription(`Added tier ${newTierData.name}`)
+      // Autosave will capture this change
     } catch (err) {
       console.error('🔍 Failed to add tier:', err)
     }
@@ -872,53 +951,70 @@ const TierBoard = () => {
   // Helper function to format dates in a user-friendly way
   const formatVersionDate = (timestamp) => {
     if (!timestamp) return 'Unknown date'
-    
     try {
-      const date = new Date(timestamp)
-      if (isNaN(date.getTime())) return 'Invalid date'
-      
       const now = new Date()
-      const diffInMs = now - date
-      const diffInHours = diffInMs / (1000 * 60 * 60)
-      const diffInDays = diffInMs / (1000 * 60 * 60 * 24)
-      
-      // Less than 1 hour ago
-      if (diffInHours < 1) {
-        const minutes = Math.floor(diffInMs / (1000 * 60))
-        return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`
+      let versionDate
+      if (timestamp instanceof Date) {
+        versionDate = new Date(timestamp.getTime())
+      } else if (typeof timestamp === 'string') {
+        const isoLike = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(timestamp)
+        versionDate = new Date(isoLike && !/Z|[+-]\d{2}:?\d{2}$/.test(timestamp) ? `${timestamp}Z` : timestamp)
+      } else {
+        versionDate = new Date(timestamp)
       }
-      
-      // Less than 24 hours ago
-      if (diffInHours < 24) {
-        const hours = Math.floor(diffInHours)
-        return `${hours} hour${hours !== 1 ? 's' : ''} ago`
+      if (isNaN(versionDate.getTime())) {
+        return 'Invalid date'
       }
-      
-      // Less than 7 days ago
-      if (diffInDays < 7) {
-        const days = Math.floor(diffInDays)
-        if (days === 1) {
-          return `Yesterday at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-        }
-        return `${days} days ago`
-      }
-      
-      // More than 7 days ago - show full date
-      return date.toLocaleDateString([], { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    } catch (error) {
-      console.error('Error formatting date:', error)
+      const diffMs = now.getTime() - versionDate.getTime()
+      const diffMinutes = Math.floor(diffMs / 60000)
+      const diffHours = Math.floor(diffMs / 3600000)
+      if (diffMinutes < 1) return 'Just now'
+      if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`
+      if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`
+      return versionDate.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    } catch {
       return 'Invalid date'
     }
   }
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-500 ease-in-out ${
+          toast.type === 'success' ? 'bg-green-500 text-white' :
+          toast.type === 'error' ? 'bg-red-500 text-white' :
+          'bg-blue-500 text-white'
+        }`}>
+          <div className="flex items-center gap-2">
+            {toast.type === 'success' && (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            {toast.type === 'error' && (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            {toast.type === 'info' && (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <span className="font-medium">{toast.message}</span>
+            <button
+              onClick={clearToast}
+              className="ml-2 text-white hover:text-gray-200"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Error Display */}
       {error && (
         <div className={`border rounded-lg p-4 mb-4 ${
@@ -989,16 +1085,29 @@ const TierBoard = () => {
       <div className="bg-white rounded-lg shadow-lg p-6 tier-board-container">
         {/* Action Buttons */}
         <div className="flex justify-between items-center mb-4">
-          {/* Version History Button */}
-          <button
-            onClick={() => setIsVersionHistoryOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Version History
-          </button>
+          {/* Left side buttons */}
+          <div className="flex gap-2">
+            {/* Version History Button */}
+            <button
+              onClick={() => setIsVersionHistoryOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Version History
+            </button>
+            
+            {/* Undo/Redo Buttons */}
+            <UndoRedoButtons
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              undoDescription={getNextUndoDescription()}
+              redoDescription={getNextRedoDescription()}
+            />
+          </div>
           
           {/* Right side buttons */}
           <div className="flex gap-2">
@@ -1016,18 +1125,16 @@ const TierBoard = () => {
             {/* Clear Board Button */}
             <button
               onClick={async () => {
-                if (window.confirm('Are you sure you want to clear all cards from the board?')) {
-                  try {
-                    // Clear all tiers
-                    for (const tier of tiers) {
-                      await clearTierCards(tier.id)
-                    }
-                    setError('Board cleared successfully!')
-                    setTimeout(() => setError(null), 3000) // Clear success message after 3 seconds
-                  } catch (err) {
-                    console.error('Failed to clear board:', err)
-                    alert('Failed to clear board.')
+                // Simple non-blocking confirm via toast could be implemented; for now, proceed without window.confirm
+                try {
+                  for (const tier of tiers) {
+                    await clearTierCards(tier.id)
                   }
+                  toastify.success('Board cleared successfully!')
+                } catch (err) {
+                  console.error('Failed to clear board:', err)
+                  setError('Failed to clear board.')
+                  setTimeout(() => setError(null), 3000)
                 }
               }}
               className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
@@ -1051,6 +1158,22 @@ const TierBoard = () => {
               </svg>
               <span className="text-yellow-800 font-medium">
                 Some cards reference deleted source items and are marked with a red X. These cards cannot be moved or edited.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Warning message for hidden cards */}
+        {(tiers || []).some(tier => 
+          (tier?.cards || []).some(card => card.hidden)
+        ) && (
+          <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              <span className="text-gray-800 font-medium">
+                Some cards are hidden and are marked with a gray X. These cards cannot be moved or edited.
               </span>
             </div>
           </div>
@@ -1279,19 +1402,19 @@ const TierBoard = () => {
                   {versionHistory.map((version, index) => (
                     <div
                       key={version.id}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                      ref={index === currentVersionIndex ? currentVersionRef : null}
+                      tabIndex={index === currentVersionIndex ? -1 : 0}
+                      aria-current={index === currentVersionIndex ? 'true' : undefined}
+                      className={`p-4 border rounded-lg transition-colors outline-none ${
                         index === currentVersionIndex
-                          ? 'border-blue-500 bg-blue-50'
+                          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-300'
                           : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                       }`}
-                      onClick={() => handleRestoreVersion(version.id)}
                     >
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <h3 className="font-medium text-gray-900">{version.description}</h3>
-                          <p className="text-sm text-gray-500 mt-1">
-                            {formatVersionDate(version.created_at)}
-                          </p>
+                          <p className="text-sm text-gray-500 mt-1">{formatVersionDate(version.created_at)}</p>
                           {versionHasDeletedItems(version) && (
                             <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1301,17 +1424,14 @@ const TierBoard = () => {
                             </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
                           {index === currentVersionIndex && (
                             <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                               Current
                             </span>
                           )}
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleRestoreVersion(version.id)
-                            }}
+                            onClick={() => handleRestoreVersion(version.id)}
                             disabled={loading.versions}
                             className={`text-sm font-medium transition-colors ${
                               loading.versions 
@@ -1319,17 +1439,19 @@ const TierBoard = () => {
                                 : 'text-blue-600 hover:text-blue-800'
                             }`}
                           >
-                            {loading.versions ? (
-                              <div className="flex items-center gap-2">
-                                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Restoring...
-                              </div>
-                            ) : (
-                              'Restore'
-                            )}
+                            {loading.versions ? 'Restoring...' : 'Restore'}
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              try {
+                                await deleteVersion(version.id)
+                              } catch {}
+                            }}
+                            className="text-sm text-red-600 hover:text-red-800"
+                            title="Delete version"
+                          >
+                            Delete
                           </button>
                         </div>
                       </div>

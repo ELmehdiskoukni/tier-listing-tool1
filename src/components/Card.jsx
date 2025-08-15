@@ -28,6 +28,12 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
   }
 
   const handleDragStart = (e) => {
+    // Hard block: do not start drag if hidden or deleted source
+    if (card?.hidden || isDeletedSource) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     e.dataTransfer.setData('application/json', JSON.stringify(card))
     e.dataTransfer.effectAllowed = 'move'
     
@@ -59,26 +65,35 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
   return (
     <div
       draggable={!isHidden && !isDeletedSource}
+      onDragStartCapture={(e) => {
+        if (isHidden || isDeletedSource) {
+          e.preventDefault()
+          e.stopPropagation()
+        }
+      }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onContextMenu={handleRightClick}
       className={`
-        border rounded-md text-sm font-medium cursor-grab
+        border rounded-md text-sm font-medium
         hover:shadow-md transition-all duration-200
         min-w-fit select-none relative
         ${isDragging ? 'opacity-50 cursor-grabbing' : ''}
-        ${isHidden ? 'opacity-40 grayscale' : ''}
-        ${isDeletedSource ? 'opacity-60 grayscale bg-gray-200 border-gray-400 cursor-not-allowed' : ''}
+        ${isHidden ? 'opacity-60 grayscale bg-gray-200 border-gray-400' : ''}
+        ${isDeletedSource ? 'opacity-60 grayscale bg-gray-200 border-gray-400' : ''}
+        ${!isHidden && !isDeletedSource ? 'cursor-grab' : 'cursor-default'}
         ${isImageCard ? 'p-1' : 'px-3 py-2'}
-        ${isDeletedSource ? 'bg-gray-200 border-gray-400' : getCardStyle(card.type)}
+        ${isHidden ? 'bg-gray-200 border-gray-400' : isDeletedSource ? 'bg-gray-200 border-gray-400' : getCardStyle(card.type)}
       `}
       title={isDeletedSource 
         ? `This item was deleted from the source area. Original: ${card.text} (${card.type})` 
-        : `${card.type}: ${card.text} ${isHidden ? '(hidden)' : ''} (right-click for options)`
+        : isHidden
+        ? `This item is hidden. Original: ${card.text} (${card.type})`
+        : `${card.type}: ${card.text} (right-click for options)`
       }
     >
       {/* Comment indicator */}
-      {card.comments && card.comments.length > 0 && (
+      {Array.isArray(card.comments) && card.comments.length > 0 && (
         <div className="absolute -top-1 -left-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
           <span className="text-xs text-white font-bold">{card.comments.length}</span>
         </div>
@@ -93,13 +108,23 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
         </div>
       )}
 
+      {/* Hidden card indicator - show only for hidden tier cards, not source cards */}
+      {isHidden && !isDeletedSource && !card.sourceCategory && (
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-gray-500 rounded-full flex items-center justify-center">
+          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </div>
+      )}
+
       {isImageCard && hasImage ? (
         // Image card with actual image
         <div className="flex flex-col items-center gap-1">
           <img 
             src={card.imageUrl || card.image} 
             alt={card.text}
-            className={`w-12 h-12 object-cover rounded ${isDeletedSource ? 'opacity-50' : ''}`}
+            draggable={false}
+           className={`w-12 h-12 object-cover rounded ${isDeletedSource || isHidden ? 'opacity-50 grayscale' : ''}`}
             onError={(e) => {
               // Fallback to text if image fails to load
               e.target.style.display = 'none'
@@ -110,16 +135,22 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
             className="text-xs text-center leading-tight px-1 hidden"
             style={{ display: 'none' }}
           >
-            {isDeletedSource ? 'This item is deleted' : card.text}
+            {isDeletedSource ? 'This item is deleted' : isHidden ? 'This item is hidden' : card.text}
           </span>
-          <span className={`text-xs text-center leading-tight px-1 ${isDeletedSource ? 'text-gray-500 italic' : ''}`}>
-            {isDeletedSource ? 'This item is deleted' : card.text}
+          <span className={`text-xs text-center leading-tight px-1 ${isDeletedSource || isHidden ? 'text-gray-500 italic' : ''}`}>
+            {isDeletedSource ? 'This item is deleted' : isHidden ? 'This item is hidden' : card.text}
           </span>
         </div>
       ) : (
         // Text card or image card without image
-        <span className={isDeletedSource ? 'text-gray-500 italic line-through' : ''}>
-          {isDeletedSource ? 'This item is deleted' : card.text}
+        <span className={
+          isDeletedSource
+            ? 'text-gray-500 italic line-through'
+            : isHidden
+              ? (card.sourceCategory ? 'text-gray-500 italic' : 'text-gray-500 italic line-through')
+              : ''
+        }>
+          {isDeletedSource ? 'This item is deleted' : isHidden ? 'This item is hidden' : card.text}
         </span>
       )}
     </div>

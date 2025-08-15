@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { toast } from 'react-toastify'
 
 const DeleteTierModal = ({ isOpen, onClose, tierName, cardCount, onDeleteCardsAndTier }) => {
   const [isProcessing, setIsProcessing] = useState(false)
@@ -11,7 +12,7 @@ const DeleteTierModal = ({ isOpen, onClose, tierName, cardCount, onDeleteCardsAn
       onClose()
     } catch (error) {
       console.error('Action failed:', error)
-      alert('Action failed. Please try again.')
+      toast.error('Action failed. Please try again.')
     } finally {
       setIsProcessing(false)
     }

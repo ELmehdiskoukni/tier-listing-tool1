@@ -13,7 +13,13 @@ import {
   bulkDeleteSourceCards,
   importCardsToTier
 } from '../controllers/sourceCardController.js';
-import { validateSourceCard, validateId, validateBulkOperation } from '../middleware/validation.js';
+import {
+  getSourceCommentsByCardId,
+  createSourceComment,
+  deleteSourceComment
+} from '../controllers/sourceCardController.js';
+import { toggleSourceInstancesHidden } from '../controllers/sourceCardController.js';
+import { validateSourceCard, validateSourceCardUpdate, validateId, validateBulkOperation, validateComment, validateCommentId } from '../middleware/validation.js';
 
 const router = express.Router();
 
@@ -39,7 +45,7 @@ router.get('/:id', validateId, getSourceCardById);
 router.post('/', validateSourceCard, createSourceCard);
 
 // PUT /api/source-cards/:id - Update source card
-router.put('/:id', validateId, validateSourceCard, updateSourceCard);
+router.put('/:id', validateId, validateSourceCardUpdate, updateSourceCard);
 
 // DELETE /api/source-cards/:id - Delete source card
 router.delete('/:id', validateId, deleteSourceCard);
@@ -52,5 +58,16 @@ router.delete('/bulk-delete', validateBulkOperation, bulkDeleteSourceCards);
 
 // POST /api/source-cards/import - Import cards from source to tier
 router.post('/import', importCardsToTier);
+
+// Source card comments endpoints
+// GET /api/source-cards/:id/comments - Get comments for a source card
+router.get('/:id/comments', validateId, getSourceCommentsByCardId);
+// POST /api/source-cards/:id/comments - Add comment to a source card
+router.post('/:id/comments', validateId, validateComment, createSourceComment);
+// DELETE /api/source-cards/:id/comments/:commentId - Delete a source card comment
+router.delete('/:id/comments/:commentId', validateId, validateCommentId, deleteSourceComment);
+
+// POST /api/source-cards/:id/toggle-hidden - Toggle hidden for all tier instances referencing this source card
+router.post('/:id/toggle-hidden', validateId, toggleSourceInstancesHidden);
 
 export default router; 

@@ -1,4 +1,20 @@
 import React, { useState, useEffect } from 'react'
+import { toast } from 'react-toastify'
+
+// Normalize timestamps to display in the user's local time accurately
+// Do NOT force a timezone; preserve original semantics and rely on the browser to render local time
+const formatLocalDateTime = (value) => {
+  if (!value) return ''
+  const raw = typeof value === 'string' ? value : (value?.toString ? value.toString() : '')
+  if (!raw) return ''
+  const isoLike = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)
+  const spacedLike = /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(raw)
+  // Normalize space-separated to ISO-like without changing timezone semantics
+  const normalized = (spacedLike && !isoLike) ? raw.replace(' ', 'T') : raw
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return raw
+  return date.toLocaleString()
+}
 
 const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
   const [comment, setComment] = useState('')
@@ -40,7 +56,7 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
       setComment('')
       onClose()
     } catch (error) {
-      alert('Failed to add comment. Please try again.')
+      toast.error('Failed to add comment. Please try again.')
     } finally {
       setIsAdding(false)
     }
@@ -122,7 +138,7 @@ const AddCommentModal = ({ isOpen, onClose, card, onAddComment }) => {
                       <div className="flex-1">
                         <p className="text-gray-800">{existingComment.text}</p>
                         <p className="text-xs text-gray-500 mt-1">
-                          {new Date(existingComment.createdAt).toLocaleString()}
+                          {formatLocalDateTime(existingComment.createdAt)}
                         </p>
                       </div>
                       <button

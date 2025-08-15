@@ -101,14 +101,15 @@ export const validateCard = [
       if (value === null || value === undefined || value === '') {
         return true; // Allow null, undefined, or empty string
       }
-      // If value is provided, it must be a valid URL
+      // If value is provided, it must be either a valid URL or a base64 data URL
       const urlRegex = /^https?:\/\/.+/;
-      if (!urlRegex.test(value)) {
-        throw new Error('Invalid image URL');
+      const base64Regex = /^data:image\/[a-zA-Z]+;base64,/;
+      if (!urlRegex.test(value) && !base64Regex.test(value)) {
+        throw new Error('Invalid image URL - must be HTTP/HTTPS URL or base64 data URL');
       }
       return true;
     })
-    .withMessage('Invalid image URL'),
+    .withMessage('Invalid image URL - must be HTTP/HTTPS URL or base64 data URL'),
   body('hidden')
     .optional()
     .isBoolean()
@@ -151,14 +152,61 @@ export const validateSourceCard = [
       if (value === null || value === undefined || value === '') {
         return true; // Allow null, undefined, or empty string
       }
-      // If value is provided, it must be a valid URL
+      // If value is provided, it must be either a valid URL or a base64 data URL
       const urlRegex = /^https?:\/\/.+/;
-      if (!urlRegex.test(value)) {
-        throw new Error('Invalid image URL');
+      const base64Regex = /^data:image\/[a-zA-Z]+;base64,/;
+      if (!urlRegex.test(value) && !base64Regex.test(value)) {
+        throw new Error('Invalid image URL - must be HTTP/HTTPS URL or base64 data URL');
       }
       return true;
     })
-    .withMessage('Invalid image URL'),
+    .withMessage('Invalid image URL - must be HTTP/HTTPS URL or base64 data URL'),
+  handleValidationErrors
+];
+
+// Source card update validation rules (all fields optional for partial updates)
+export const validateSourceCardUpdate = [
+  body('text')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 255 })
+    .withMessage('Card text must be between 2 and 255 characters'),
+  body('type')
+    .optional()
+    .isIn(['image', 'text', 'page', 'personas', 'competitor'])
+    .withMessage('Invalid card type'),
+  body('subtype')
+    .optional()
+    .custom((value) => {
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow null, undefined, or empty string
+      }
+      // If value is provided, it must be one of the allowed values
+      if (!['image', 'text'].includes(value)) {
+        throw new Error('Invalid card subtype');
+      }
+      return true;
+    })
+    .withMessage('Invalid card subtype'),
+  body('sourceCategory')
+    .optional()
+    .isIn(['competitors', 'pages', 'personas'])
+    .withMessage('Invalid source category'),
+  body('imageUrl')
+    .optional()
+    .custom((value) => {
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow null, undefined, or empty string
+      }
+      // If value is provided, it must be either a valid URL or a base64 data URL
+      const urlRegex = /^https?:\/\/.+/;
+      const base64Regex = /^data:image\/[a-zA-Z]+;base64,/;
+      if (!urlRegex.test(value) && !base64Regex.test(value)) {
+        throw new Error('Invalid image URL - must be HTTP/HTTPS URL or base64 data URL');
+      }
+      return true;
+    })
+    .withMessage('Invalid image URL - must be HTTP/HTTPS URL or base64 data URL'),
   handleValidationErrors
 ];
 
@@ -197,6 +245,14 @@ export const validateId = [
   param('id')
     .isLength({ min: 1 })
     .withMessage('ID parameter is required'),
+  handleValidationErrors
+];
+
+// Comment ID parameter validation
+export const validateCommentId = [
+  param('commentId')
+    .isLength({ min: 1 })
+    .withMessage('commentId parameter is required'),
   handleValidationErrors
 ];
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { toast } from 'react-toastify'
 
 const DeleteCardModal = ({ isOpen, onClose, card, onConfirm }) => {
   const [isDeleting, setIsDeleting] = useState(false)
@@ -10,7 +11,7 @@ const DeleteCardModal = ({ isOpen, onClose, card, onConfirm }) => {
       await onConfirm(card)
       onClose()
     } catch (error) {
-      alert('Failed to delete card. Please try again.')
+      toast.error('Failed to delete card. Please try again.')
     } finally {
       setIsDeleting(false)
     }

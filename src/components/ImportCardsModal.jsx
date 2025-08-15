@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { toast } from 'react-toastify'
 
 const ImportCardsModal = ({ isOpen, onClose, onImportCards, sourceCards, tierName, selectedSourceType }) => {
   const [selectedCards, setSelectedCards] = useState({})
@@ -46,7 +47,7 @@ const ImportCardsModal = ({ isOpen, onClose, onImportCards, sourceCards, tierNam
     const cardsToImport = Object.values(selectedCards).filter(Boolean)
     
     if (cardsToImport.length === 0) {
-      alert('Please select at least one card to import')
+      toast.error('Please select at least one card to import')
       return
     }
 
@@ -57,7 +58,7 @@ const ImportCardsModal = ({ isOpen, onClose, onImportCards, sourceCards, tierNam
       setSelectedCards({})
       onClose()
     } catch (error) {
-      alert('Failed to import cards. Please try again.')
+      toast.error('Failed to import cards. Please try again.')
     } finally {
       setIsImporting(false)
     }

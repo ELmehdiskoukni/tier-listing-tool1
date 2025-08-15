@@ -10,7 +10,7 @@ export class Version {
         description,
         tiers_data as tiersData,
         source_cards_data as sourceCardsData,
-        created_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
       FROM versions 
       ORDER BY created_at DESC
     `;
@@ -27,7 +27,7 @@ export class Version {
         description,
         tiers_data as tiersData,
         source_cards_data as sourceCardsData,
-        created_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
       FROM versions 
       WHERE version_id = $1
     `;
@@ -41,14 +41,14 @@ export class Version {
     const { id, description, tiersData, sourceCardsData } = versionData;
     
     const query = `
-      INSERT INTO versions (version_id, description, tiers_data, source_cards_data)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO versions (version_id, description, tiers_data, source_cards_data, created_at)
+      VALUES ($1, $2, $3, $4, (NOW() AT TIME ZONE 'UTC'))
       RETURNING 
         version_id as id,
         description,
         tiers_data as tiersData,
         source_cards_data as sourceCardsData,
-        created_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
     `;
     
     const result = await pool.query(query, [id, description, tiersData, sourceCardsData]);
@@ -75,7 +75,7 @@ export class Version {
         description,
         tiers_data as tiersData,
         source_cards_data as sourceCardsData,
-        created_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
       FROM versions 
       ORDER BY created_at DESC
       LIMIT $1
@@ -93,7 +93,7 @@ export class Version {
         description,
         tiers_data as tiersData,
         source_cards_data as sourceCardsData,
-        created_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
       FROM versions 
       WHERE created_at >= $1 AND created_at <= $2
       ORDER BY created_at DESC
@@ -137,7 +137,7 @@ export class Version {
         description,
         tiers_data as tiersData,
         source_cards_data as sourceCardsData,
-        created_at
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
       FROM versions 
       ORDER BY created_at DESC
       LIMIT 1

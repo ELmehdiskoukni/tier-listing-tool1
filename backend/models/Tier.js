@@ -259,7 +259,7 @@ export class Tier {
                     json_build_object(
                       'id', cm.comment_id,
                       'text', cm.text,
-                      'createdAt', cm.created_at
+                      'createdAt', to_char(cm.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"')
                     )
                   ) FROM comments cm WHERE cm.card_id = c.card_id),
                   '[]'::json
@@ -320,7 +320,7 @@ export class Tier {
                     json_build_object(
                       'id', cm.comment_id,
                       'text', cm.text,
-                      'createdAt', cm.created_at
+                      'createdAt', to_char(cm.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI"Z"')
                     )
                   ) FROM comments cm WHERE cm.card_id = c.card_id),
                   '[]'::json

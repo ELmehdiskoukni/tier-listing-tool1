@@ -129,32 +129,28 @@ export const deleteCard = asyncHandler(async (req, res) => {
 export const moveCard = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { targetTierId, position } = req.body;
-  
+
   if (!targetTierId) {
-    return res.status(400).json({
-      success: false,
-      error: 'Target tier ID is required'
-    });
+    return res.status(400).json({ success: false, error: 'Target tier ID is required' });
   }
-  
-  // Check if target tier exists
+
+  // Validate destination tier
   const targetTier = await Tier.getById(targetTierId);
   if (!targetTier) {
-    return res.status(404).json({
-      success: false,
-      error: 'Target tier not found'
-    });
+    return res.status(404).json({ success: false, error: 'Target tier not found' });
   }
-  
-  // If position not provided, get next available position in target tier
-  const cardPosition = position !== undefined && position !== null ? parseInt(position) : await Card.getNextPositionInTier(targetTierId);
-  
-  const updatedCard = await Card.moveToTier(id, targetTierId, cardPosition);
-  
-  res.json({
-    success: true,
-    data: updatedCard
-  });
+
+  // If position not provided, compute next available position
+  const cardPosition = position !== undefined && position !== null
+    ? parseInt(position)
+    : await Card.getNextPositionInTier(targetTierId);
+
+  // Move the card
+  await Card.moveToTier(id, targetTierId, cardPosition);
+
+  // Return full, normalized tiers with cards so frontend can set state safely
+  const tiersWithCards = await Tier.getAllWithCards();
+  return res.json({ success: true, data: tiersWithCards });
 });
 
 // Duplicate card
@@ -195,7 +191,7 @@ export const duplicateCard = asyncHandler(async (req, res) => {
   
   const newCardData = {
     id: newCardId,
-    text: `${originalCard.text} Copy`,
+    text: originalCard.text,
     type: originalCard.type,
     subtype: originalCard.subtype,
     imageUrl: originalCard.imageUrl || originalCard.imageurl,
