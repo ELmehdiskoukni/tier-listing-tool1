@@ -7,6 +7,7 @@ import {
   createSourceCard,
   updateSourceCard,
   deleteSourceCard,
+  duplicateSourceCard,
   searchSourceCards,
   getSourceCardStats,
   bulkCreateSourceCards,
@@ -49,6 +50,9 @@ router.put('/:id', validateId, validateSourceCardUpdate, updateSourceCard);
 
 // DELETE /api/source-cards/:id - Delete source card
 router.delete('/:id', validateId, deleteSourceCard);
+
+// POST /api/source-cards/:id/duplicate - Duplicate source card
+router.post('/:id/duplicate', validateId, duplicateSourceCard);
 
 // POST /api/source-cards/bulk-create - Bulk create source cards
 router.post('/bulk-create', bulkCreateSourceCards);

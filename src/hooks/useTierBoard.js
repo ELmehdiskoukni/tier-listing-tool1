@@ -44,6 +44,13 @@ export const useTierBoard = () => {
   const suppressNextAutosaveRef = useRef(false);
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
+  // Prevent overlapping server mutations during undo/redo and new actions
+  const serverSyncInProgressRef = useRef(false);
+  // Prevent automatic currentVersionIndex updates during manual undo/redo operations
+  const suppressVersionIndexUpdateRef = useRef(false);
+  // Tiers explicitly suppressed locally (e.g., undone duplicates) to avoid ghost reappearance
+  const suppressedTierIdsRef = useRef(new Set());
+  const SUPPRESSED_STORAGE_KEY = 'suppressedTierIds';
 
   // Allow UI to set the next autosave description explicitly
   const setNextAutosaveDescription = useCallback((description) => {
@@ -51,6 +58,80 @@ export const useTierBoard = () => {
       lastActionDescriptionRef.current = description;
     }
   }, []);
+
+  // Manual version index update for restore operations
+  const setManualVersionIndex = useCallback((versionId) => {
+    if (!Array.isArray(versionHistory) || versionHistory.length === 0) return;
+    const targetIndex = versionHistory.findIndex(v => v.id === versionId);
+    if (targetIndex !== -1) {
+      suppressVersionIndexUpdateRef.current = true;
+      setCurrentVersionIndex(targetIndex);
+    }
+  }, [versionHistory]);
+
+  // Version operations - moved here to fix hoisting issue with autosaveNow
+  const createVersion = useCallback(async (versionData) => {
+    try {
+      // If we're not at the latest version (currentVersionIndex > 0), truncate future versions
+      if (currentVersionIndex > 0) {
+        // Delete all versions before the current index (newer versions that we're abandoning)
+        const versionsToDelete = versionHistory.slice(0, currentVersionIndex);
+        for (const version of versionsToDelete) {
+          try {
+            await versionAPI.deleteVersion(version.id);
+          } catch (deleteErr) {
+            console.warn('Failed to delete future version:', version.id, deleteErr);
+          }
+        }
+        // Update local version history to remove deleted versions
+        setVersionHistory(prev => prev.slice(currentVersionIndex));
+        setCurrentVersionIndex(0); // Reset to point to what is now the latest
+      }
+
+      // Let backend stamp created_at in UTC to ensure consistency on refresh
+      const response = await versionAPI.createVersion(versionData);
+      const newVersion = response.data.data || response.data;
+      // Normalize created_at to ISO string for reliable parsing
+      if (newVersion && newVersion.created_at && typeof newVersion.created_at !== 'string') {
+        try {
+          newVersion.created_at = new Date(newVersion.created_at).toISOString();
+        } catch {}
+      }
+      // Ensure we have an ISO UTC string
+      if (newVersion && typeof newVersion.created_at === 'string' && /\d{4}-\d{2}-\d{2}T/.test(newVersion.created_at) && !/Z|[+-]\d{2}:?\d{2}$/.test(newVersion.created_at)) {
+        newVersion.created_at = `${newVersion.created_at}Z`;
+      }
+      setVersionHistory(prev => [newVersion, ...prev]); // Add new version at the top
+      setCurrentVersionIndex(0); // New version becomes current
+      return newVersion;
+    } catch (err) {
+      const errorMessage = handleAPIError(err, 'Failed to create version');
+      setError(errorMessage);
+      throw err;
+    }
+  }, [currentVersionIndex, versionHistory, setVersionHistory, setCurrentVersionIndex, setError]);
+
+  // Immediate autosave utility (bypasses debounce)
+  const autosaveNow = useCallback(async (descriptionOverride) => {
+    try {
+      const desc = (descriptionOverride || lastActionDescriptionRef.current || 'Board updated').trim();
+      if (!desc || desc.toLowerCase() === 'board updated') return;
+      // Use createVersion to handle version history truncation properly
+      const version = await createVersion({
+        description: desc,
+        tiersData: JSON.parse(JSON.stringify(tiers)),
+        sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+      });
+      // Mark as saved to prevent immediate duplicate from debounce
+      lastSavedHashRef.current = JSON.stringify({ t: tiers, s: sourceCards });
+      setToast({ type: 'success', message: 'Changes saved', duration: 2500 });
+      return version;
+    } catch (e) {
+      console.error('Immediate autosave failed:', e);
+      setToast({ type: 'error', message: 'Failed to save changes', duration: 3000 });
+      return null;
+    }
+  }, [tiers, sourceCards, createVersion, currentVersionIndex, versionHistory]);
 
   // Auto-dismiss toast after duration
   useEffect(() => {
@@ -74,10 +155,38 @@ export const useTierBoard = () => {
     };
   }, [toast]);
 
+  // Helper to apply server tiers safely (sanitize + filter suppressed)
+  const setTiersFiltered = useCallback((tiersInput) => {
+    const sanitized = sanitizeTierData(tiersInput);
+    const filtered = sanitized.filter(t => !suppressedTierIdsRef.current.has(t.id));
+    setTiers(filtered);
+  }, []);
+
+  // Persist/load suppression set across refreshes
+  const loadSuppressedFromStorage = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(SUPPRESSED_STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) suppressedTierIdsRef.current = new Set(arr);
+      }
+    } catch (_) { /* ignore */ }
+  }, []);
+
+  const saveSuppressedToStorage = useCallback(() => {
+    try {
+      localStorage.setItem(
+        SUPPRESSED_STORAGE_KEY,
+        JSON.stringify(Array.from(suppressedTierIdsRef.current))
+      );
+    } catch (_) { /* ignore */ }
+  }, []);
+
   // Load initial data
   useEffect(() => {
+    loadSuppressedFromStorage();
     loadInitialData();
-  }, []);
+  }, [loadSuppressedFromStorage]);
 
   // Sanitize tier data to ensure proper structure
   const sanitizeTierData = (tiers) => {
@@ -122,72 +231,221 @@ export const useTierBoard = () => {
     };
   }, []);
 
-  // Helper function to restore state from action
-  const restoreStateFromAction = useCallback((action, isUndo = true) => {
-    const stateToRestore = isUndo ? action.previousState : action.newState;
+// Helper function to restore state from action
+const restoreStateFromAction = useCallback((action, isUndo = true) => {
+  // Get the appropriate state based on whether we're undoing or redoing
+  const stateToRestore = isUndo ? action.previousState : action.newState;
+  
+  console.log(`Restoring state from ${isUndo ? 'previous' : 'new'} state for action:`, action.type, action.description);
+  console.log('State to restore:', {
+    tiers: stateToRestore.tiers?.length || 0,
+    tierIds: stateToRestore.tiers?.map(t => t.id) || [],
+    sourceCards: Object.keys(stateToRestore.sourceCards || {})
+  });
+  
+  if (stateToRestore.tiers) {
+    // Deep clone the tiers to ensure we don't have reference issues
+    const clonedTiers = JSON.parse(JSON.stringify(stateToRestore.tiers));
     
-    if (stateToRestore.tiers) {
-      setTiers(stateToRestore.tiers);
-    }
-    if (stateToRestore.sourceCards) {
-      setSourceCards(stateToRestore.sourceCards);
-    }
-  }, []);
+    // Validate the tiers data before setting state
+    const sanitizedTiers = sanitizeTierData(clonedTiers);
+    console.log('Sanitized tiers for state restoration:', {
+      count: sanitizedTiers.length,
+      ids: sanitizedTiers.map(t => t.id)
+    });
+    
+    // Set the validated tiers
+    setTiersFiltered(sanitizedTiers);
+  }
+  
+  if (stateToRestore.sourceCards) {
+    // Deep clone the source cards to ensure we don't have reference issues
+    const clonedSourceCards = JSON.parse(JSON.stringify(stateToRestore.sourceCards));
+    setSourceCards(clonedSourceCards);
+  }
+  
+  // Make sure the suppression flag is set to prevent autosave immediately after restore
+  suppressNextAutosaveRef.current = true;
+}, []);
 
-  // Enhanced undo function that handles state restoration
-  const handleUndo = useCallback(async () => {
-    try {
-      // Prevent autosave of the immediately restored state
-      suppressNextAutosaveRef.current = true;
-      const action = undo();
-      if (action) {
-        // Perform server-side reverts for certain actions to keep backend consistent
-        if (action.type === ACTION_TYPES.DUPLICATE_TIER && action.meta?.newTierId) {
+
+
+// Undo: navigate to previous version in versionHistory
+const handleUndo = useCallback(async () => {
+  try {
+    if (!Array.isArray(versionHistory) || versionHistory.length === 0) return;
+    if (currentVersionIndex >= versionHistory.length - 1) {
+      setToast({ type: 'info', message: 'Already at oldest version', duration: 2500 });
+      return;
+    }
+    const targetIndex = currentVersionIndex + 1;
+    const targetVersion = versionHistory[targetIndex];
+
+    suppressNextAutosaveRef.current = true;
+    suppressVersionIndexUpdateRef.current = true;
+    serverSyncInProgressRef.current = true;
+    
+    // Restore the target version
+    await versionAPI.restoreVersion(targetVersion.id);
+
+    // Reload data from server after restoration
+    const [tiersResponse, sourceCardsResponse] = await Promise.all([
+      tierAPI.getAllTiersWithCards(),
+      sourceCardAPI.getAllSourceCardsGrouped()
+    ]);
+    setTiersFiltered(tiersResponse.data.data || tiersResponse.data);
+    const reloadedSourceCards = sourceCardsResponse.data.data || sourceCardsResponse.data;
+    setSourceCards({
+      competitors: reloadedSourceCards.competitors || [],
+      pages: reloadedSourceCards.pages || [],
+      personas: reloadedSourceCards.personas || []
+    });
+
+    // Update currentVersionIndex to point to the restored version
+    setCurrentVersionIndex(targetIndex);
+    
+    // Autosave the restored state as the current state (without creating a new version)
+    const currentHash = computeStateHash(tiersResponse.data.data || tiersResponse.data, {
+      competitors: reloadedSourceCards.competitors || [],
+      pages: reloadedSourceCards.pages || [],
+      personas: reloadedSourceCards.personas || []
+    });
+    lastSavedHashRef.current = currentHash;
+    
+    setToast({ type: 'info', message: `Reverted to: ${targetVersion?.description || 'previous version'}`, duration: 3000 });
+  } catch (error) {
+    console.error('Error during version-undo operation:', error);
+    setError('Failed to load previous version. Please try again.');
+  } finally {
+    serverSyncInProgressRef.current = false;
+  }
+}, [versionHistory, currentVersionIndex, setError]);
+
+// Redo: navigate to next (newer) version in versionHistory
+const handleRedo = useCallback(async () => {
+  try {
+    if (!Array.isArray(versionHistory) || versionHistory.length === 0) return;
+    if (currentVersionIndex <= 0) {
+      setToast({ type: 'info', message: 'Already at latest version', duration: 2500 });
+      return;
+    }
+    const targetIndex = currentVersionIndex - 1;
+    const targetVersion = versionHistory[targetIndex];
+
+    suppressNextAutosaveRef.current = true;
+    suppressVersionIndexUpdateRef.current = true;
+    serverSyncInProgressRef.current = true;
+    
+    // Restore the target version
+    await versionAPI.restoreVersion(targetVersion.id);
+
+    // Reload data from server after restoration
+    const [tiersResponse, sourceCardsResponse] = await Promise.all([
+      tierAPI.getAllTiersWithCards(),
+      sourceCardAPI.getAllSourceCardsGrouped()
+    ]);
+    setTiersFiltered(tiersResponse.data.data || tiersResponse.data);
+    const reloadedSourceCards = sourceCardsResponse.data.data || sourceCardsResponse.data;
+    setSourceCards({
+      competitors: reloadedSourceCards.competitors || [],
+      pages: reloadedSourceCards.pages || [],
+      personas: reloadedSourceCards.personas || []
+    });
+
+    // Update currentVersionIndex to point to the restored version
+    setCurrentVersionIndex(targetIndex);
+    
+    // Autosave the restored state as the current state (without creating a new version)
+    const currentHash = computeStateHash(tiersResponse.data.data || tiersResponse.data, {
+      competitors: reloadedSourceCards.competitors || [],
+      pages: reloadedSourceCards.pages || [],
+      personas: reloadedSourceCards.personas || []
+    });
+    lastSavedHashRef.current = currentHash;
+    
+    setToast({ type: 'info', message: `Advanced to: ${targetVersion?.description || 'next version'}`, duration: 3000 });
+  } catch (error) {
+    console.error('Error during version-redo operation:', error);
+    setError('Failed to load next version. Please try again.');
+  } finally {
+    serverSyncInProgressRef.current = false;
+  }
+}, [versionHistory, currentVersionIndex, setError]);
+
+// Fixed duplicateTier function to properly track undo/redo metadata
+const duplicateTier = async (id) => {
+  try {
+    // If an undo/redo server sync is still in progress, wait until it finishes to avoid race conditions
+    while (serverSyncInProgressRef.current) {
+      // Small delay loop; typically very short-lived
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    // Store previous state for undo BEFORE making any changes
+    const previousState = { tiers: [...tiers], sourceCards: { ...sourceCards } };
+    
+    console.log('🔍 duplicateTier called with id:', id)
+    const response = await tierAPI.duplicateTier(id);
+    const newTier = response.data.data || response.data;
+    
+    console.log('🔍 Tier duplicated:', newTier)
+    console.log('🔍 About to reload tiers from API...')
+    
+    // Instead of updating local state, reload the entire tiers data from API
+    // This ensures we always have the latest data and avoids race conditions
+    const tiersResponse = await tierAPI.getAllTiersWithCards();
+    const updatedTiers = tiersResponse.data.data || tiersResponse.data;
+    
+    console.log('🔍 Reloaded tiers from API after duplicate tier:', updatedTiers)
+    console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
+    
+    // Sanitize the tiers data
+    let sanitizedTiers = sanitizeTierData(updatedTiers);
+
+    // Keep only the newly created tier as the delta vs previousState; remove any other extras
+    const prevIds = new Set((previousState.tiers || []).map(t => t.id));
+    const extras = sanitizedTiers.filter(t => !prevIds.has(t.id));
+    if (extras.length > 1) {
+      for (const extra of extras) {
+        if (extra.id !== newTier.id) {
           try {
-            await tierAPI.deleteTier(action.meta.newTierId);
-            const tiersResponse = await tierAPI.getAllTiersWithCards();
-            const updatedTiers = tiersResponse.data.data || tiersResponse.data;
-            const sanitizedTiers = sanitizeTierData(updatedTiers);
-            setTiers(sanitizedTiers);
+            // eslint-disable-next-line no-await-in-loop
+            await tierAPI.deleteTier(extra.id);
           } catch (e) {
-            console.error('Failed to revert duplicate tier on server during undo:', e);
+            console.warn('Failed to delete unexpected extra tier after duplicate:', extra.id, e);
           }
         }
-        restoreStateFromAction(action, true);
-        setToast({ type: 'info', message: 'Action undone', duration: 3000 });
       }
-    } catch (error) {
-      console.error('Error during undo operation:', error);
-      setError('Failed to undo action. Please try again.');
+      const tiersResponse2 = await tierAPI.getAllTiersWithCards();
+      const updatedTiers2 = tiersResponse2.data.data || tiersResponse2.data;
+      sanitizedTiers = sanitizeTierData(updatedTiers2);
     }
-  }, [undo, restoreStateFromAction, setError]);
 
-  // Enhanced redo function that handles state restoration
-  const handleRedo = useCallback(async () => {
-    try {
-      // Prevent autosave of the immediately restored state
-      suppressNextAutosaveRef.current = true;
-      const action = redo();
-      if (action) {
-        if (action.type === ACTION_TYPES.DUPLICATE_TIER && action.meta?.sourceTierId) {
-          try {
-            await tierAPI.duplicateTier(action.meta.sourceTierId);
-            const tiersResponse = await tierAPI.getAllTiersWithCards();
-            const updatedTiers = tiersResponse.data.data || tiersResponse.data;
-            const sanitizedTiers = sanitizeTierData(updatedTiers);
-            setTiers(sanitizedTiers);
-          } catch (e) {
-            console.error('Failed to re-apply duplicate tier on server during redo:', e);
-          }
-        }
-        restoreStateFromAction(action, false);
-        setToast({ type: 'info', message: 'Action redone', duration: 3000 });
-      }
-    } catch (error) {
-      console.error('Error during redo operation:', error);
-      setError('Failed to redo action. Please try again.');
+    // Filter out suppressed tiers before setting state
+    setTiersFiltered(sanitizedTiers);
+
+    // Track action for undo/redo (only if not during undo/redo operation)
+    if (!isPerformingAction) {
+      const newState = { tiers: sanitizedTiers, sourceCards: { ...sourceCards } };
+      const sourceTier = tiers.find(t => t.id === id);
+      const description = `Duplicated tier "${sourceTier?.name || 'Tier'}"`;
+      
+      addAction(createAction(
+        ACTION_TYPES.DUPLICATE_TIER,
+        description,
+        previousState,
+        newState,
+        { sourceTierId: id, newTierId: newTier.id }
+      ));
     }
-  }, [redo, restoreStateFromAction, setError]);
+    
+    return newTier;
+  } catch (err) {
+    const errorMessage = handleAPIError(err, 'Failed to duplicate tier');
+    setError(errorMessage);
+    throw err;
+  }
+};
 
   const loadInitialData = async () => {
     console.log('🔍 loadInitialData called')
@@ -202,11 +460,11 @@ export const useTierBoard = () => {
       console.log('🔍 Loaded tiers length:', loadedTiers?.length)
       
       // Sanitize tier data to ensure proper structure
-      const sanitizedTiers = sanitizeTierData(loadedTiers);
+      let sanitizedTiers = sanitizeTierData(loadedTiers);
       console.log('🔍 Sanitized tiers:', sanitizedTiers)
       console.log('🔍 Sanitized tiers length:', sanitizedTiers?.length)
       
-      setTiers(sanitizedTiers);
+      setTiersFiltered(sanitizedTiers);
       
       // Check if we have at least 2 tiers (project requirement)
       if (!loadedTiers || loadedTiers.length < 2) {
@@ -246,7 +504,7 @@ export const useTierBoard = () => {
         console.log('🔍 Sanitized updated tiers:', sanitizedUpdatedTiers)
         console.log('🔍 Sanitized updated tiers length:', sanitizedUpdatedTiers?.length)
         
-        setTiers(sanitizedUpdatedTiers);
+        setTiersFiltered(sanitizedUpdatedTiers);
       }
       
       // Load source cards grouped
@@ -288,7 +546,8 @@ export const useTierBoard = () => {
         pages: loadedSourceCards.pages || [],
         personas: loadedSourceCards.personas || []
       };
-      updateCurrentVersionIndex(versions, finalTiers, finalSourceCards);
+      // Use the sorted list to keep indices aligned with UI
+      updateCurrentVersionIndex(sortedVersions, finalTiers, finalSourceCards);
       
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to load initial data');
@@ -329,7 +588,7 @@ export const useTierBoard = () => {
       console.log('🔍 Sanitized tiers after create tier:', sanitizedTiers)
       console.log('🔍 Sanitized tiers length:', sanitizedTiers?.length)
       
-      setTiers(sanitizedTiers);
+      setTiersFiltered(sanitizedTiers);
       
       // Track action for undo/redo (only if not during undo/redo operation)
       if (!isPerformingAction) {
@@ -384,7 +643,7 @@ export const useTierBoard = () => {
       console.log('🔍 Sanitized tiers after update tier:', sanitizedTiers)
       console.log('🔍 Sanitized tiers length:', sanitizedTiers?.length)
       
-      setTiers(sanitizedTiers);
+      setTiersFiltered(sanitizedTiers);
       
       // Track action for undo/redo (only if not during undo/redo operation)
       if (!isPerformingAction) {
@@ -443,7 +702,7 @@ export const useTierBoard = () => {
       console.log('🔍 Sanitized tiers after delete tier:', sanitizedTiers)
       console.log('🔍 Sanitized tiers length:', sanitizedTiers?.length)
       
-      setTiers(sanitizedTiers);
+      setTiersFiltered(sanitizedTiers);
       
       // Track action for undo/redo (only if not during undo/redo operation)
       if (!isPerformingAction) {
@@ -474,7 +733,7 @@ export const useTierBoard = () => {
       
       const response = await tierAPI.moveTierPosition(id, direction);
       const updatedTiers = response.data.data || response.data;
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
       
       // Track action for undo/redo (only if not during undo/redo operation)
       if (!isPerformingAction) {
@@ -497,46 +756,68 @@ export const useTierBoard = () => {
     }
   };
 
-  const duplicateTier = async (id) => {
-    try {
-      console.log('🔍 duplicateTier called with id:', id)
-      const response = await tierAPI.duplicateTier(id);
-      const newTier = response.data.data || response.data;
-      
-      console.log('🔍 Tier duplicated:', newTier)
-      console.log('🔍 About to reload tiers from API...')
-      
-      // Instead of updating local state, reload the entire tiers data from API
-      // This ensures we always have the latest data and avoids race conditions
-      const tiersResponse = await tierAPI.getAllTiersWithCards();
-      const updatedTiers = tiersResponse.data.data || tiersResponse.data;
-      
-      console.log('🔍 Reloaded tiers from API after duplicate tier:', updatedTiers)
-      console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
-      
-      setTiers(updatedTiers);
+// Fixed duplicateTier function in useTierBoard.js
 
-      // Track undo/redo for duplicate tier
-      const previousState = { tiers: [...tiers], sourceCards: { ...sourceCards } };
-      const newState = { tiers: updatedTiers, sourceCards: { ...sourceCards } };
-      const sourceTier = tiers.find(t => t.id === id);
-      const createdTier = (updatedTiers || []).find(t => !tiers.some(prev => prev.id === t.id));
-      const description = `Duplicated tier ${sourceTier?.name || ''}`.trim();
-      addAction(createAction(
-        ACTION_TYPES.DUPLICATE_TIER,
-        description,
-        previousState,
-        newState,
-        { sourceTierId: id, newTierId: createdTier?.id }
-      ));
-      
-      return newTier;
-    } catch (err) {
-      const errorMessage = handleAPIError(err, 'Failed to duplicate tier');
-      setError(errorMessage);
-      throw err;
-    }
-  };
+
+// const duplicateTier = async (id) => {
+//   try {
+//     console.log('🔍 duplicateTier called with id:', id)
+    
+//     // Store previous state for undo BEFORE any API call
+//     const previousState = { 
+//       tiers: JSON.parse(JSON.stringify(tiers)), 
+//       sourceCards: JSON.parse(JSON.stringify(sourceCards)) 
+//     };
+    
+//     const response = await tierAPI.duplicateTier(id);
+//     const newTier = response.data.data || response.data;
+    
+//     console.log('🔍 Tier duplicated:', newTier)
+//     console.log('🔍 About to reload tiers from API...')
+    
+//     // Instead of updating local state, reload the entire tiers data from API
+//     // This ensures we always have the latest data and avoids race conditions
+//     const tiersResponse = await tierAPI.getAllTiersWithCards();
+//     const updatedTiers = tiersResponse.data.data || tiersResponse.data;
+    
+//     console.log('🔍 Reloaded tiers from API after duplicate tier:', updatedTiers)
+//     console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
+    
+//     // Apply the new state to the UI
+//     setTiersFiltered(updatedTiers);
+
+//     // Track undo/redo for duplicate tier
+//     // Create a deep copy of the new state to ensure it's separate from the current state
+//     const newState = { 
+//       tiers: JSON.parse(JSON.stringify(updatedTiers)), 
+//       sourceCards: JSON.parse(JSON.stringify(sourceCards)) 
+//     };
+    
+//     // Get source and target tier information for better descriptions and meta info
+//     const sourceTier = previousState.tiers.find(t => t.id === id);
+//     const createdTier = updatedTiers.find(t => !previousState.tiers.some(prev => prev.id === t.id));
+    
+//     const description = `Duplicated tier ${sourceTier?.name || ''}`.trim();
+    
+//     addAction(createAction(
+//       ACTION_TYPES.DUPLICATE_TIER,
+//       description,
+//       previousState,
+//       newState,
+//       { 
+//         sourceTierId: id, 
+//         newTierId: createdTier?.id,
+//         actionTimestamp: Date.now() // Add timestamp for debugging
+//       }
+//     ));
+    
+//     return newTier;
+//   } catch (err) {
+//     const errorMessage = handleAPIError(err, 'Failed to duplicate tier');
+//     setError(errorMessage);
+//     throw err;
+//   }
+// };
 
   const clearTierCards = async (id) => {
     try {
@@ -560,7 +841,7 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers from API after clear tier cards:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
       
       // Add action to undo stack
       const newState = { tiers: updatedTiers, sourceCards: { ...sourceCards } };
@@ -694,7 +975,7 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       console.log('🔍 About to set tiers state with reloaded data...')
       
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
       
       // Track action for undo/redo (only if not during undo/redo operation)
       if (!isPerformingAction) {
@@ -736,7 +1017,7 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers from API after update:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
       
       // Update in source cards if it's a source card
       if (cardData.sourceCategory) {
@@ -777,7 +1058,7 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers from API after delete:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
       
       // Remove from source cards
       setSourceCards(prev => ({
@@ -824,7 +1105,7 @@ export const useTierBoard = () => {
       }
 
       // Apply state
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
 
       // Track action for undo/redo (only if not during undo/redo operation)
       if (!isPerformingAction) {
@@ -860,18 +1141,42 @@ export const useTierBoard = () => {
       console.log('🔍 About to reload tiers from API...')
       
       // Instead of updating local state, reload the entire tiers data from API
-      // This ensures we always have the latest data and avoids race conditions
+      // This ensures we get the complete, up-to-date state from the server
       const tiersResponse = await tierAPI.getAllTiersWithCards();
       const updatedTiers = tiersResponse.data.data || tiersResponse.data;
       
       console.log('🔍 Reloaded tiers from API after duplicate:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
       
       return newCard;
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to duplicate card');
+      setError(errorMessage);
+      throw err;
+    }
+  };
+
+  const duplicateSourceCard = async (id) => {
+    try {
+      const response = await sourceCardAPI.duplicateSourceCard(id);
+      const newSourceCard = response.data.data || response.data;
+      
+      console.log('🔍 Source card duplicated:', newSourceCard)
+      console.log('🔍 About to reload source cards from API...')
+      
+      // Reload the entire source cards data from API
+      const sourceCardsResponse = await sourceCardAPI.getAllSourceCardsGrouped();
+      const updatedSourceCards = sourceCardsResponse.data.data || sourceCardsResponse.data;
+      
+      console.log('🔍 Reloaded source cards from API after duplicate:', updatedSourceCards)
+      
+      setSourceCards(updatedSourceCards);
+      
+      return newSourceCard;
+    } catch (err) {
+      const errorMessage = handleAPIError(err, 'Failed to duplicate source card');
       setError(errorMessage);
       throw err;
     }
@@ -893,7 +1198,7 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers from API after toggle hidden:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
       
       return updatedCard;
     } catch (err) {
@@ -933,7 +1238,7 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers from API after create comment:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
       setSourceCards({
         competitors: updatedSourceCards.competitors || [],
         pages: updatedSourceCards.pages || [],
@@ -977,7 +1282,7 @@ export const useTierBoard = () => {
       console.log('🔍 Reloaded tiers from API after delete comment:', updatedTiers)
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
-      setTiers(updatedTiers);
+      setTiersFiltered(updatedTiers);
       setSourceCards({
         competitors: updatedSourceCards.competitors || [],
         pages: updatedSourceCards.pages || [],
@@ -990,31 +1295,7 @@ export const useTierBoard = () => {
     }
   };
 
-  // Version operations
-  const createVersion = async (versionData) => {
-    try {
-      // Let backend stamp created_at in UTC to ensure consistency on refresh
-      const response = await versionAPI.createVersion(versionData);
-      const newVersion = response.data.data || response.data;
-      // Normalize created_at to ISO string for reliable parsing
-      if (newVersion && newVersion.created_at && typeof newVersion.created_at !== 'string') {
-        try {
-          newVersion.created_at = new Date(newVersion.created_at).toISOString();
-        } catch {}
-      }
-      // Ensure we have an ISO UTC string
-      if (newVersion && typeof newVersion.created_at === 'string' && /\d{4}-\d{2}-\d{2}T/.test(newVersion.created_at) && !/Z|[+-]\d{2}:?\d{2}$/.test(newVersion.created_at)) {
-        newVersion.created_at = `${newVersion.created_at}Z`;
-      }
-      setVersionHistory(prev => [newVersion, ...prev]); // Add new version at the top
-      setCurrentVersionIndex(0); // New version becomes current
-      return newVersion;
-    } catch (err) {
-      const errorMessage = handleAPIError(err, 'Failed to create version');
-      setError(errorMessage);
-      throw err;
-    }
-  };
+  // Version operations section - createVersion moved earlier to fix hoisting
 
   const deleteVersion = async (id) => {
     try {
@@ -1100,7 +1381,7 @@ export const useTierBoard = () => {
         
         if (invalidTiers.length === 0) {
           console.log('🔍 Setting tiers with validated data:', sanitizedTiers.length, 'tiers');
-          setTiers(sanitizedTiers);
+          setTiersFiltered(sanitizedTiers);
           
           // Add action to undo stack
           const newState = { tiers: sanitizedTiers, sourceCards: { ...sourceCards } };
@@ -1223,12 +1504,7 @@ export const useTierBoard = () => {
     await loadInitialData();
   };
 
-  // Update current version index whenever board state changes
-  useEffect(() => {
-    if (versionHistory.length > 0 && tiers.length > 0) {
-      updateCurrentVersionIndex(versionHistory, tiers, sourceCards);
-    }
-  }, [tiers, sourceCards, versionHistory]);
+  
 
   // Helper function to determine if current board state matches a version
   const isCurrentVersion = (version, currentTiers, currentSourceCards) => {
@@ -1326,25 +1602,42 @@ export const useTierBoard = () => {
   };
 
   // Function to update current version index based on actual board state
-  const updateCurrentVersionIndex = (versions, currentTiers, currentSourceCards) => {
-    for (let i = versions.length - 1; i >= 0; i--) {
-      if (isCurrentVersion(versions[i], currentTiers, currentSourceCards)) {
+  // Note: expects the same ordering as `versionHistory` (newest-first)
+  const updateCurrentVersionIndex = (versionsInUIOrder, currentTiers, currentSourceCards) => {
+    if (!Array.isArray(versionsInUIOrder) || versionsInUIOrder.length === 0) {
+      setCurrentVersionIndex(-1);
+      return;
+    }
+    // Iterate newest-first to find the first match (index 0 is latest)
+    for (let i = 0; i < versionsInUIOrder.length; i++) {
+      if (isCurrentVersion(versionsInUIOrder[i], currentTiers, currentSourceCards)) {
         setCurrentVersionIndex(i);
         return;
       }
     }
-    // If no version matches, set to -1 (no current version)
-    setCurrentVersionIndex(-1);
+    // If no version matches current board state, default to latest so the UI always highlights something
+    setCurrentVersionIndex(0);
   };
 
   // Compute a simple hash of current state to deduplicate autosaves
-  const computeStateHash = (tiersState, sourceCardsState) => {
+  const computeStateHash = useCallback((tiersState, sourceCardsState) => {
     try {
       return JSON.stringify({ t: tiersState, s: sourceCardsState });
     } catch (e) {
       return `${Date.now()}`; // fallback unique value
     }
-  };
+  }, []);
+
+  // Update current version index whenever board state changes (but not during manual undo/redo)
+  useEffect(() => {
+    if (suppressVersionIndexUpdateRef.current) {
+      suppressVersionIndexUpdateRef.current = false;
+      return;
+    }
+    if (versionHistory.length > 0 && tiers.length > 0) {
+      updateCurrentVersionIndex(versionHistory, tiers, sourceCards);
+    }
+  }, [tiers, sourceCards, versionHistory]);
 
   // Debounced autosave effect
   useEffect(() => {
@@ -1450,6 +1743,7 @@ export const useTierBoard = () => {
     deleteCard,
     moveCard,
     duplicateCard,
+    duplicateSourceCard,
     toggleCardHidden,
     
     // Comment operations
@@ -1460,6 +1754,7 @@ export const useTierBoard = () => {
     createVersion,
     restoreVersion,
     deleteVersion,
+    setManualVersionIndex,
     
     // Import operations
     importCardsToTier,
@@ -1473,8 +1768,8 @@ export const useTierBoard = () => {
     // Undo/Redo functionality
     handleUndo,
     handleRedo,
-    canUndo,
-    canRedo,
+    canUndo: currentVersionIndex < versionHistory.length - 1,
+    canRedo: currentVersionIndex > 0,
     getNextUndoDescription,
     getNextRedoDescription,
     isPerformingAction,

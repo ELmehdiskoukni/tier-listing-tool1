@@ -9,7 +9,7 @@ import ExportPreview from './ExportPreview'
 const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
   const [exportFormat, setExportFormat] = useState('pdf')
   const [exportOptions, setExportOptions] = useState({
-    includeSourceArea: true,
+    includeSourceArea: false,
     includeComments: true,
     includeHiddenCards: false
   })
@@ -72,12 +72,12 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
           const isDeletedSource = isCardFromDeletedSource(card)
           
           cardElement.className = `bg-white border border-gray-300 rounded-lg p-3 shadow-sm min-w-[120px] max-w-[200px] relative ${
-            isDeletedSource || card.hidden ? 'bg-gray-200 border-gray-400' : ''
+            card.hidden ? 'bg-gray-200 border-gray-400' : ''
           }`
           
           let cardContent = `<div class="font-medium text-gray-800 mb-1 ${
-            isDeletedSource || card.hidden ? 'text-gray-500 italic line-through' : ''
-          }">${isDeletedSource ? 'This item is deleted' : card.hidden ? 'This item is hidden' : card.text}</div>`
+            card.hidden ? 'text-gray-500 italic line-through' : ''
+          }">${card.hidden ? 'This item is hidden' : card.text}</div>`
           
           if (exportOptions.includeComments && card.comments && card.comments.length > 0) {
             cardContent += `<div class="text-xs text-gray-500">${card.comments.length} comment${card.comments.length > 1 ? 's' : ''}</div>`
@@ -94,33 +94,6 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
       tierBoardContent.appendChild(tierRow)
     })
     
-    // Add source area if enabled
-    if (exportOptions.includeSourceArea) {
-      const sourceArea = document.createElement('div')
-      sourceArea.className = 'mb-6'
-      sourceArea.innerHTML = '<h3 class="text-lg font-semibold mb-2">Source Cards</h3>'
-      
-      const sourceGrid = document.createElement('div')
-      sourceGrid.className = 'grid grid-cols-1 md:grid-cols-3 gap-4'
-      
-      Object.entries(sourceCards).forEach(([category, cards]) => {
-        const categoryDiv = document.createElement('div')
-        categoryDiv.className = 'border rounded p-3'
-        categoryDiv.innerHTML = `
-          <h4 class="font-medium capitalize mb-2">${category}</h4>
-          <div class="space-y-1">
-            ${cards.slice(0, 3).map(card => 
-              `<div class="text-sm bg-gray-100 p-1 rounded">${card.text}</div>`
-            ).join('')}
-            ${cards.length > 3 ? `<div class="text-xs text-gray-500">+${cards.length - 3} more...</div>` : ''}
-          </div>
-        `
-        sourceGrid.appendChild(categoryDiv)
-      })
-      
-      sourceArea.appendChild(sourceGrid)
-      exportDiv.insertBefore(sourceArea, tierBoardContent)
-    }
     
     exportDiv.appendChild(tierBoardContent)
     document.body.appendChild(exportDiv)
@@ -144,9 +117,6 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
           break
         case 'doc':
           await exportToDOC()
-          break
-        case 'ppt':
-          await exportToPPT(exportElement)
           break
         case 'jpeg':
           await exportToImage('jpeg', exportElement)
@@ -220,30 +190,38 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
   }
 
   const exportToDOC = async () => {
-    const doc = new Document({
-      sections: [{
-        properties: {},
-        children: [
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "Tier Board Export",
-                bold: true,
-                size: 32
-              })
-            ],
-            alignment: AlignmentType.CENTER
-          }),
-          new Paragraph({
-            children: [new TextRun({ text: "", break: 1 })]
-          }),
-          ...generateTierTableRows()
-        ]
-      }]
-    })
+    try {
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: [
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "Tier Board Export",
+                  bold: true,
+                  size: 32
+                })
+              ],
+              alignment: AlignmentType.CENTER
+            }),
+            new Paragraph({
+              children: [new TextRun({ text: "", break: 1 })]
+            }),
+            ...generateTierTableRows()
+          ]
+        }]
+      })
 
-    const buffer = await Packer.toBuffer(doc)
-    saveAs(new Blob([buffer]), 'tier-board.docx')
+      // Use toBlob in the browser for better compatibility
+      const blob = await Packer.toBlob(doc)
+      saveAs(blob, 'tier-board.docx')
+      toast.success('Word document exported')
+    } catch (err) {
+      console.error('DOCX export error:', err)
+      toast.error('Failed to export Word document. See console for details.')
+      throw err
+    }
   }
 
   const generateTierTableRows = () => {
@@ -267,7 +245,7 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
 
     // Data rows
     tiers.forEach(tier => {
-      const cardTexts = tier.cards
+      const cardTexts = (tier.cards || [])
         .filter(card => !card.hidden || exportOptions.includeHiddenCards)
         .map(card => {
           let text = card.text
@@ -300,29 +278,7 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
     ]
   }
 
-  const exportToPPT = async (element) => {
-    // For PPT, we'll create a simple HTML representation and convert to image
-    // Then create a PDF that can be opened in PowerPoint
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff'
-    })
-
-    const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4'
-    })
-
-    const imgWidth = 297 // A4 landscape width
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
-
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
-    pdf.save('tier-board-presentation.pdf')
-  }
+  
 
   const exportToImage = async (format, element) => {
     try {
@@ -379,111 +335,23 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
             {/* Export Options */}
-            <div className="space-y-6">
+            <div className="space-y-6 lg:col-span-3">
               <div>
                 <h3 className="text-lg font-semibold mb-3">Export Format</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { value: 'pdf', label: 'PDF', icon: '📄' },
-                    { value: 'doc', label: 'Word Doc', icon: '📝' },
-                    { value: 'ppt', label: 'PowerPoint', icon: '📊' },
-                    { value: 'jpeg', label: 'JPEG Image', icon: '🖼️' },
-                    { value: 'png', label: 'PNG Image', icon: '🖼️' }
-                  ].map(format => (
-                    <button
-                      key={format.value}
-                      onClick={() => setExportFormat(format.value)}
-                      className={`p-3 border rounded-lg text-left transition-colors ${
-                        exportFormat === format.value
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    >
-                      <div className="text-2xl mb-1">{format.icon}</div>
-                      <div className="font-medium">{format.label}</div>
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="pdf"> PDF</option>
+                  <option value="doc"> Word Document</option>
+                  <option value="jpeg"> JPEG Image</option>
+                  <option value="png"> PNG Image</option>
+                </select>
               </div>
 
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Export Options</h3>
-                <div className="space-y-3">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={exportOptions.includeSourceArea}
-                      onChange={(e) => setExportOptions(prev => ({
-                        ...prev,
-                        includeSourceArea: e.target.checked
-                      }))}
-                      className="mr-2"
-                    />
-                    Include Source Area
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={exportOptions.includeComments}
-                      onChange={(e) => setExportOptions(prev => ({
-                        ...prev,
-                        includeComments: e.target.checked
-                      }))}
-                      className="mr-2"
-                    />
-                    Include Comments
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={exportOptions.includeHiddenCards}
-                      onChange={(e) => setExportOptions(prev => ({
-                        ...prev,
-                        includeHiddenCards: e.target.checked
-                      }))}
-                      className="mr-2"
-                    />
-                    Include Hidden Cards
-                  </label>
-                </div>
-
-                {['jpeg', 'png'].includes(exportFormat) && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium mb-2">Image Quality</label>
-                    <select
-                      value={exportOptions.imageQuality}
-                      onChange={(e) => setExportOptions(prev => ({
-                        ...prev,
-                        imageQuality: e.target.value
-                      }))}
-                      className="w-full p-2 border rounded"
-                    >
-                      <option value="high">High Quality</option>
-                      <option value="medium">Medium Quality</option>
-                      <option value="low">Low Quality</option>
-                    </select>
-                  </div>
-                )}
-
-                {exportFormat === 'pdf' && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium mb-2">Page Orientation</label>
-                    <select
-                      value={exportOptions.pageOrientation}
-                      onChange={(e) => setExportOptions(prev => ({
-                        ...prev,
-                        pageOrientation: e.target.value
-                      }))}
-                      className="w-full p-2 border rounded"
-                    >
-                      <option value="landscape">Landscape</option>
-                      <option value="portrait">Portrait</option>
-                    </select>
-                  </div>
-                )}
-              </div>
 
               <div className="pt-4">
                 <button
@@ -507,7 +375,7 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
             </div>
 
             {/* Preview */}
-            <div>
+            <div className="lg:col-span-7">
               <h3 className="text-lg font-semibold mb-3">Preview</h3>
               {renderBoardPreview()}
             </div>

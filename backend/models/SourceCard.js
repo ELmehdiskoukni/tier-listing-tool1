@@ -346,6 +346,11 @@ export class SourceCard {
     return result.rows;
   }
 
+  // Get source card with comments (alias for getById since it already includes comments)
+  static async getWithComments(cardId) {
+    return this.getById(cardId);
+  }
+
   // Get source card statistics
   static async getStats() {
     const query = `

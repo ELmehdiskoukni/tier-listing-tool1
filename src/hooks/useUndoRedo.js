@@ -37,6 +37,8 @@ export const useUndoRedo = () => {
   // Ref to track if we're currently performing an undo/redo operation
   const isUndoRedoInProgress = useRef(false);
   const lastPushTimestampRef = useRef(0);
+ // Flag to track if an action was just undone - used to detect new actions after undo
+ const actionJustUndone = useRef(false);
 
   // Create a deep copy of the current state
   const createStateSnapshot = useCallback((tiers, sourceCards) => {
@@ -52,48 +54,45 @@ export const useUndoRedo = () => {
     }
   }, []);
 
-  // Add an action to the undo stack
-  const addAction = useCallback((action) => {
-    console.log('🔄 Adding action to undo stack:', action?.type, action?.description);
-    console.log('🔄 Current undo stack length:', undoStack.length);
-    console.log('🔄 isPerformingAction:', isPerformingAction);
-    console.log('🔄 isUndoRedoInProgress:', isUndoRedoInProgress.current);
+    // Add an action to the undo stack
+    const addAction = useCallback((action) => {
+      console.log('🔄 Adding action to undo stack:', action?.type, action?.description);
     
-    if (isUndoRedoInProgress.current || isPerformingAction) {
-      console.log('🔄 Skipping action - operation in progress');
-      return; // Don't add actions during undo/redo operations
-    }
-
-    if (!action || !action.previousState || !action.newState) {
-      console.warn('🔄 Invalid action data, skipping undo/redo tracking');
-      return;
-    }
-
-    setUndoStack(prevStack => {
-      let newStack = [...prevStack];
-      const now = Date.now();
-      const last = newStack[newStack.length - 1];
-      
-      // Coalesce if same type and within window
-      if (last && last.type === action.type && now - (last.timestamp || 0) <= COALESCE_WINDOW_MS) {
-        // Replace the last action with the new one (keeps latest state and description)
-        newStack[newStack.length - 1] = { ...action, timestamp: now };
-      } else {
-        newStack = [...newStack, { ...action, timestamp: now }];
+      if (isUndoRedoInProgress.current || isPerformingAction) {
+        console.log('🔄 Skipping action - operation in progress');
+        return;
       }
-      lastPushTimestampRef.current = now;
-      
-      console.log('🔄 New undo stack length:', newStack.length);
-      // Limit the stack size
-      if (newStack.length > MAX_HISTORY_SIZE) {
-        return newStack.slice(-MAX_HISTORY_SIZE);
+      if (!action || !action.previousState || !action.newState) {
+        console.warn('🔄 Invalid action data, skipping undo/redo tracking');
+        return;
       }
-      return newStack;
-    });
     
-    // Clear redo stack when new action is performed
-    setRedoStack([]);
-  }, [isPerformingAction, undoStack.length]);
+      // If a new action occurs after undo, we branch history: clear redo
+      if (actionJustUndone.current) {
+        if (redoStack.length > 0) {
+          setRedoStack([]);
+        }
+        actionJustUndone.current = false; // Important even when redoStack is already empty
+      }
+    
+      setUndoStack(prevStack => {
+        const now = Date.now();
+        const last = prevStack[prevStack.length - 1];
+        let newStack = [...prevStack];
+    
+        if (last && last.type === action.type && now - (last.timestamp || 0) <= COALESCE_WINDOW_MS) {
+          newStack[newStack.length - 1] = { ...action, timestamp: now };
+        } else {
+          newStack.push({ ...action, timestamp: now });
+        }
+    
+        if (newStack.length > MAX_HISTORY_SIZE) {
+          newStack = newStack.slice(-MAX_HISTORY_SIZE);
+        }
+        lastPushTimestampRef.current = now;
+        return newStack;
+      });
+    }, [isPerformingAction, redoStack]);
 
   // Undo the last action
   const undo = useCallback(() => {
@@ -111,6 +110,9 @@ export const useUndoRedo = () => {
     
     setUndoStack(prevStack => prevStack.slice(0, -1));
     setRedoStack(prevStack => [...prevStack, lastAction]);
+    
+    // Set flag that an action was just undone - this helps track when new actions occur after undo
+    actionJustUndone.current = true;
 
     setIsPerformingAction(false);
     isUndoRedoInProgress.current = false;
@@ -134,6 +136,9 @@ export const useUndoRedo = () => {
     
     setRedoStack(prevStack => prevStack.slice(0, -1));
     setUndoStack(prevStack => [...prevStack, lastRedoAction]);
+    
+    // Reset the undo flag since we're not undoing but redoing
+    actionJustUndone.current = false;
 
     setIsPerformingAction(false);
     isUndoRedoInProgress.current = false;
@@ -146,6 +151,7 @@ export const useUndoRedo = () => {
     console.log('🔄 Clearing undo/redo history');
     setUndoStack([]);
     setRedoStack([]);
+    actionJustUndone.current = false;
   }, []);
 
   // Check if undo is available
@@ -181,4 +187,4 @@ export const useUndoRedo = () => {
     undoStackLength: undoStack.length,
     redoStackLength: redoStack.length
   };
-}; 
+};

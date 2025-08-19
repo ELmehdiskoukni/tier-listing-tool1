@@ -15,7 +15,7 @@ import {
   searchCards,
   getCardStats
 } from '../controllers/cardController.js';
-import { validateCard, validateId, validateBulkOperation, validateMoveCard } from '../middleware/validation.js';
+import { validateCard, validateCardUpdate, validateId, validateBulkOperation, validateMoveCard } from '../middleware/validation.js';
 
 const router = express.Router();
 
@@ -41,7 +41,7 @@ router.get('/tier/:tierId', validateId, getCardsByTierId);
 router.post('/', validateCard, createCard);
 
 // PUT /api/cards/:id - Update card
-router.put('/:id', validateId, validateCard, updateCard);
+router.put('/:id', validateId, validateCardUpdate, updateCard);
 
 // DELETE /api/cards/:id - Delete card
 router.delete('/:id', validateId, deleteCard);

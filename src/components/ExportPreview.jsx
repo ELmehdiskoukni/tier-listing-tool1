@@ -42,33 +42,6 @@ const ExportPreview = ({ tiers = [], sourceCards = {}, exportOptions = {} }) => 
     <div className="bg-white p-4 rounded-lg shadow-sm border">
       <h2 className="text-xl font-bold mb-4 text-center">Tier Board Preview</h2>
       
-      {/* Source Area Preview */}
-      {exportOptions.includeSourceArea && sourceCards && (
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold mb-2">Source Cards</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Object.entries(sourceCards).map(([category, cards = []]) => (
-              <div key={category} className="border rounded p-3">
-                <h4 className={`font-medium capitalize mb-2 p-2 rounded ${getCategoryColor(category)}`}>
-                  {category}
-                </h4>
-                <div className="space-y-1">
-                  {cards.slice(0, 3).map(card => (
-                    <div key={card.id} className="text-sm bg-gray-100 p-1 rounded">
-                      {card.text}
-                    </div>
-                  ))}
-                  {cards.length > 3 && (
-                    <div className="text-xs text-gray-500">
-                      +{cards.length - 3} more...
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Tiers Preview - Completely static, no interactive elements */}
       <div className="space-y-3">
@@ -97,20 +70,11 @@ const ExportPreview = ({ tiers = [], sourceCards = {}, exportOptions = {} }) => 
                           <div 
                             key={card.id} 
                             className={`bg-white border border-gray-300 rounded-lg p-3 shadow-sm min-w-[120px] max-w-[200px] relative ${
-                              isDeletedSource ? 'bg-gray-200 border-gray-400' : ''
+                              card.hidden ? 'bg-gray-200 border-gray-400' : ''
                             }`}
                           >
-                            {/* Deleted source indicator */}
-                            {isDeletedSource && (
-                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                                </svg>
-                              </div>
-                            )}
-
                             {/* Hidden card indicator */}
-                            {card.hidden && !isDeletedSource && (
+                            {card.hidden && (
                               <div className="absolute -top-1 -right-1 w-4 h-4 bg-gray-500 rounded-full flex items-center justify-center">
                                 <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -118,9 +82,9 @@ const ExportPreview = ({ tiers = [], sourceCards = {}, exportOptions = {} }) => 
                               </div>
                             )}
                             <div className={`font-medium text-gray-800 mb-1 ${
-                              isDeletedSource || card.hidden ? 'text-gray-500 italic line-through' : ''
+                              card.hidden ? 'text-gray-500 italic line-through' : ''
                             }`}>
-                              {isDeletedSource ? 'This item is deleted' : card.hidden ? 'This item is hidden' : card.text}
+                              {card.hidden ? 'This item is hidden' : card.text}
                             </div>
                             {exportOptions.includeComments && card.comments && card.comments.length > 0 && (
                               <div className="text-xs text-gray-500">

@@ -104,6 +104,101 @@ export const deleteSourceCard = asyncHandler(async (req, res) => {
   });
 });
 
+// Duplicate source card
+export const duplicateSourceCard = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  
+  console.log('🔍 Backend: duplicateSourceCard called with id:', id);
+  
+  // Get the original source card with comments
+  const originalCard = await SourceCard.getWithComments(id);
+  if (!originalCard) {
+    return res.status(404).json({
+      success: false,
+      error: 'Source card not found'
+    });
+  }
+  
+  console.log('🔍 Backend: originalCard with comments:', originalCard);
+  
+  // Generate new source card ID
+  const newCardId = `source-${originalCard.sourceCategory}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const newCardData = {
+    id: newCardId,
+    text: originalCard.text + ' copy',
+    type: originalCard.type,
+    subtype: originalCard.subtype,
+    sourceCategory: originalCard.sourceCategory,
+    imageUrl: originalCard.imageUrl || originalCard.imageurl
+  };
+  
+  console.log('🔍 Backend: newCardData:', newCardData);
+  
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Create the new source card
+    await client.query(
+      `INSERT INTO source_cards (card_id, text, type, subtype, source_category, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [newCardId, newCardData.text, newCardData.type, newCardData.subtype, 
+       newCardData.sourceCategory, newCardData.imageUrl]
+    );
+    
+    // Clone all comments
+    if (originalCard.comments && originalCard.comments.length > 0) {
+      for (const comment of originalCard.comments) {
+        const newCommentId = `source-comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Preserve original comment timestamp for historical accuracy
+        let originalTimestamp = null;
+        try {
+          if (comment.createdAt) {
+            originalTimestamp = new Date(comment.createdAt);
+          }
+        } catch (e) {
+          console.error('Error parsing timestamp:', e);
+        }
+        
+        if (originalTimestamp && !isNaN(originalTimestamp.getTime())) {
+          // Use the timestamp from original comment
+          await client.query(
+            `INSERT INTO source_comments (comment_id, text, source_card_id, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $4)`,
+            [newCommentId, comment.text, newCardId, originalTimestamp]
+          );
+        } else {
+          // Fall back to current timestamp
+          await client.query(
+            `INSERT INTO source_comments (comment_id, text, source_card_id)
+             VALUES ($1, $2, $3)`,
+            [newCommentId, comment.text, newCardId]
+          );
+        }
+      }
+    }
+    
+    await client.query('COMMIT');
+    
+    // Fetch the newly created source card with its comments
+    const newCardWithComments = await SourceCard.getWithComments(newCardId);
+    
+    res.status(201).json({
+      success: true,
+      data: newCardWithComments
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error in duplicateSourceCard:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+});
+
 // Comments on source cards
 export const getSourceCommentsByCardId = asyncHandler(async (req, res) => {
   const { id } = req.params;

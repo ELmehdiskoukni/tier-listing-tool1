@@ -44,12 +44,14 @@ const TierBoard = () => {
     deleteCard,
     moveCard,
     duplicateCard,
+    duplicateSourceCard,
     toggleCardHidden,
     createComment,
     deleteComment,
     createVersion,
     restoreVersion,
     deleteVersion,
+    setManualVersionIndex,
     importCardsToTier,
     clearError,
     refreshData,
@@ -134,6 +136,9 @@ const TierBoard = () => {
       
       // Reload all data to get the restored state
       await refreshData()
+      
+      // Update currentVersionIndex to point to the restored version
+      setManualVersionIndex(versionId)
       
       // Validate that we have at least 2 tiers after restoration
       const currentTiersResponse = await tierAPI.getAllTiersWithCards()
@@ -521,20 +526,8 @@ const TierBoard = () => {
       }
 
       if (foundInSource) {
-        // If the card is from a source area, duplicating as a tier card should create a normal tier card copy
-        // Create a tier-only card in the same tier as the current context if available
-        const tierContainingCard = (tiers || []).find(t => (t.cards || []).some(c => c.id === card.id))
-        const targetTierId = tierContainingCard ? tierContainingCard.id : (tiers[0]?.id)
-        if (targetTierId) {
-          await createCard({
-            text: card.text,
-            type: card.type,
-            subtype: card.subtype,
-            imageUrl: card.imageUrl || card.image,
-            hidden: false,
-            tierId: targetTierId
-          })
-        }
+        // If the card is from a source area, duplicate it within the same source area
+        await duplicateSourceCard(card.id)
       } else {
         // Duplicate in tier via backend endpoint that creates an independent tier card copy
         await duplicateCard(card.id)

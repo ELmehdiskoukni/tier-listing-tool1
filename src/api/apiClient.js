@@ -102,6 +102,9 @@ export const sourceCardAPI = {
   // Delete source card
   deleteSourceCard: (id) => apiClient.delete(`/source-cards/${id}`),
   
+  // Duplicate source card
+  duplicateSourceCard: (id) => apiClient.post(`/source-cards/${id}/duplicate`),
+  
   // Search source cards
   searchSourceCards: (query) => apiClient.get('/source-cards/search', { params: { q: query } }),
   
