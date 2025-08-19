@@ -424,6 +424,19 @@ const duplicateTier = async (id) => {
     // Filter out suppressed tiers before setting state
     setTiersFiltered(sanitizedTiers);
 
+    // Create a version entry describing this duplication
+    try {
+      const sourceTier = tiers.find(t => t.id === id);
+      const description = `Duplicated tier "${sourceTier?.name || 'Tier'}"`;
+      await createVersion({
+        description,
+        tiersData: JSON.parse(JSON.stringify(sanitizedTiers)),
+        sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+      });
+    } catch (e) {
+      console.warn('Failed to create version for duplicateTier:', e);
+    }
+
     // Track action for undo/redo (only if not during undo/redo operation)
     if (!isPerformingAction) {
       const newState = { tiers: sanitizedTiers, sourceCards: { ...sourceCards } };
@@ -892,23 +905,35 @@ const duplicateTier = async (id) => {
   const updateSourceCard = async (id, cardData) => {
     try {
       console.log('🔍 updateSourceCard called with id:', id, 'cardData:', cardData)
+      // Capture previous state for potential UI messaging (no local mutation yet)
+      const prevSourceCards = {
+        competitors: sourceCards.competitors || [],
+        pages: sourceCards.pages || [],
+        personas: sourceCards.personas || []
+      };
+
       const response = await sourceCardAPI.updateSourceCard(id, cardData);
       const updatedCard = response.data.data || response.data;
       console.log('🔍 Source card updated:', updatedCard)
-      
+
+      // Reload source cards to preserve all fields (image, comments, etc.)
       console.log('🔍 About to reload source cards from API...')
-      // Instead of updating local state, reload the entire source cards data from API
-      // This ensures we always have the latest data including image URLs and avoids race conditions
       const sourceCardsResponse = await sourceCardAPI.getAllSourceCardsGrouped();
       const updatedSourceCards = sourceCardsResponse.data.data || sourceCardsResponse.data;
       console.log('🔍 Reloaded source cards from API:', updatedSourceCards)
-      
+
       setSourceCards({
         competitors: updatedSourceCards.competitors || [],
         pages: updatedSourceCards.pages || [],
         personas: updatedSourceCards.personas || []
       });
-      
+
+      // Also reload tiers so tier cards reflect the new source name/image immediately
+      console.log('🔍 About to reload tiers from API after source rename...')
+      const tiersResponse = await tierAPI.getAllTiersWithCards();
+      const updatedTiers = tiersResponse.data.data || tiersResponse.data;
+      setTiersFiltered(updatedTiers);
+
       return updatedCard;
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to update source card');
@@ -1134,6 +1159,9 @@ const duplicateTier = async (id) => {
 
   const duplicateCard = async (id) => {
     try {
+      // Capture original card and tier for description
+      const originalTier = tiers.find(t => (t.cards || []).some(c => c.id === id));
+      const originalCard = originalTier?.cards?.find(c => c.id === id);
       const response = await cardAPI.duplicateCard(id);
       const newCard = response.data.data || response.data;
       
@@ -1149,7 +1177,19 @@ const duplicateTier = async (id) => {
       console.log('🔍 Reloaded tiers length:', updatedTiers?.length)
       
       setTiersFiltered(updatedTiers);
-      
+
+      // Create a version entry after duplication
+      try {
+        const description = `Duplicated card "${originalCard?.text || 'Card'}" in tier "${originalTier?.name || 'tier'}"`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for duplicateCard:', e);
+      }
+
       return newCard;
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to duplicate card');
@@ -1160,6 +1200,17 @@ const duplicateTier = async (id) => {
 
   const duplicateSourceCard = async (id) => {
     try {
+      // Capture original source card and category for description
+      const allSourceCardsBefore = {
+        competitors: sourceCards.competitors || [],
+        pages: sourceCards.pages || [],
+        personas: sourceCards.personas || []
+      };
+      const originalCard = [
+        ...allSourceCardsBefore.competitors,
+        ...allSourceCardsBefore.pages,
+        ...allSourceCardsBefore.personas
+      ].find(c => c.id === id);
       const response = await sourceCardAPI.duplicateSourceCard(id);
       const newSourceCard = response.data.data || response.data;
       
@@ -1172,8 +1223,28 @@ const duplicateTier = async (id) => {
       
       console.log('🔍 Reloaded source cards from API after duplicate:', updatedSourceCards)
       
-      setSourceCards(updatedSourceCards);
-      
+      setSourceCards({
+        competitors: updatedSourceCards.competitors || [],
+        pages: updatedSourceCards.pages || [],
+        personas: updatedSourceCards.personas || []
+      });
+
+      // Create a version entry after duplication
+      try {
+        const description = `Duplicated source card "${originalCard?.text || 'Card'}" in ${originalCard?.sourceCategory || 'source'}`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(tiers)),
+          sourceCardsData: JSON.parse(JSON.stringify({
+            competitors: updatedSourceCards.competitors || [],
+            pages: updatedSourceCards.pages || [],
+            personas: updatedSourceCards.personas || []
+          }))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for duplicateSourceCard:', e);
+      }
+
       return newSourceCard;
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to duplicate source card');

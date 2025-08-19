@@ -83,8 +83,54 @@ export const updateSourceCard = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const updateData = req.body;
   
+  // Fetch original to know prior text/type for propagating to tier cards
+  const original = await SourceCard.getById(id);
+  if (!original) {
+    return res.status(404).json({ success: false, error: 'Source card not found' });
+  }
+
+  // Update the source card first
   const updatedSourceCard = await SourceCard.update(id, updateData);
-  
+
+  // Propagate name (and image if explicitly changed) to tier card instances created from this source card.
+  // Since we don't persist a source_card_id on tier cards, match by prior text + type.
+  try {
+    if (Object.prototype.hasOwnProperty.call(updateData, 'imageUrl')) {
+      // Image explicitly provided: update both text and image
+      await pool.query(
+        `UPDATE cards
+           SET text = $1,
+               image_url = $2,
+               updated_at = CURRENT_TIMESTAMP
+         WHERE text = $3
+           AND type = $4`,
+        [
+          updatedSourceCard.text,
+          updatedSourceCard.imageUrl, // may be null intentionally if clearing image
+          original.text,
+          original.type
+        ]
+      );
+    } else {
+      // Only rename: update text, preserve existing image_url
+      await pool.query(
+        `UPDATE cards
+           SET text = $1,
+               updated_at = CURRENT_TIMESTAMP
+         WHERE text = $2
+           AND type = $3`,
+        [
+          updatedSourceCard.text,
+          original.text,
+          original.type
+        ]
+      );
+    }
+  } catch (e) {
+    // Log and continue; do not fail the source update response
+    console.error('Failed to propagate source card changes to tier cards:', e);
+  }
+
   res.json({
     success: true,
     data: updatedSourceCard
@@ -434,6 +480,37 @@ export const importCardsToTier = asyncHandler(async (req, res) => {
       tierId: tierId,
       position: position
     });
+    
+    // Clone comments from the source card into the new tier card
+    if (sourceCard.comments && sourceCard.comments.length > 0) {
+      for (const srcComment of sourceCard.comments) {
+        const newCommentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Attempt to preserve original comment timestamp if available
+        let originalTimestamp = null;
+        try {
+          if (srcComment.createdAt) {
+            originalTimestamp = new Date(srcComment.createdAt);
+          }
+        } catch (e) {
+          // If parsing fails, fall back to default timestamps
+        }
+        
+        if (originalTimestamp && !isNaN(originalTimestamp.getTime())) {
+          await pool.query(
+            `INSERT INTO comments (comment_id, text, card_id, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $4)`,
+            [newCommentId, srcComment.text, cardId, originalTimestamp]
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO comments (comment_id, text, card_id)
+             VALUES ($1, $2, $3)`,
+            [newCommentId, srcComment.text, cardId]
+          );
+        }
+      }
+    }
     
     importedCards.push(importedCard);
   }
