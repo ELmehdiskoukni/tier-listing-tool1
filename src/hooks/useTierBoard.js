@@ -424,19 +424,6 @@ const duplicateTier = async (id) => {
     // Filter out suppressed tiers before setting state
     setTiersFiltered(sanitizedTiers);
 
-    // Create a version entry describing this duplication
-    try {
-      const sourceTier = tiers.find(t => t.id === id);
-      const description = `Duplicated tier "${sourceTier?.name || 'Tier'}"`;
-      await createVersion({
-        description,
-        tiersData: JSON.parse(JSON.stringify(sanitizedTiers)),
-        sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
-      });
-    } catch (e) {
-      console.warn('Failed to create version for duplicateTier:', e);
-    }
-
     // Track action for undo/redo (only if not during undo/redo operation)
     if (!isPerformingAction) {
       const newState = { tiers: sanitizedTiers, sourceCards: { ...sourceCards } };
@@ -922,17 +909,45 @@ const duplicateTier = async (id) => {
       const updatedSourceCards = sourceCardsResponse.data.data || sourceCardsResponse.data;
       console.log('🔍 Reloaded source cards from API:', updatedSourceCards)
 
-      setSourceCards({
-        competitors: updatedSourceCards.competitors || [],
-        pages: updatedSourceCards.pages || [],
-        personas: updatedSourceCards.personas || []
-      });
+      // If this update included an image change, add a one-time cache-buster to the updated item's image
+      const cacheBuster = Date.now();
+      const addBust = (url) => {
+        if (!url) return url;
+        return url.includes('?') ? `${url}&v=${cacheBuster}` : `${url}?v=${cacheBuster}`;
+      };
+      const imageWasUpdated = Object.prototype.hasOwnProperty.call(cardData || {}, 'imageUrl') && cardData.imageUrl !== undefined;
+
+      const nextSourceCards = {
+        competitors: (updatedSourceCards.competitors || []).map(sc =>
+          imageWasUpdated && sc.id === updatedCard.id ? { ...sc, imageUrl: addBust(sc.imageUrl) } : sc
+        ),
+        pages: (updatedSourceCards.pages || []).map(sc =>
+          imageWasUpdated && sc.id === updatedCard.id ? { ...sc, imageUrl: addBust(sc.imageUrl) } : sc
+        ),
+        personas: (updatedSourceCards.personas || []).map(sc =>
+          imageWasUpdated && sc.id === updatedCard.id ? { ...sc, imageUrl: addBust(sc.imageUrl) } : sc
+        )
+      };
+
+      setSourceCards(nextSourceCards);
 
       // Also reload tiers so tier cards reflect the new source name/image immediately
       console.log('🔍 About to reload tiers from API after source rename...')
       const tiersResponse = await tierAPI.getAllTiersWithCards();
       const updatedTiers = tiersResponse.data.data || tiersResponse.data;
-      setTiersFiltered(updatedTiers);
+      // If image changed, apply cache-buster to matching tier cards (matched by updated text and type)
+      const nextTiers = imageWasUpdated
+        ? (Array.isArray(updatedTiers) ? updatedTiers.map(tier => ({
+            ...tier,
+            cards: (tier.cards || []).map(card =>
+              card && card.text === updatedCard.text && card.type === updatedCard.type
+                ? { ...card, imageUrl: addBust(card.imageUrl || card.image) }
+                : card
+            )
+          })) : updatedTiers)
+        : updatedTiers;
+
+      setTiersFiltered(nextTiers);
 
       return updatedCard;
     } catch (err) {
