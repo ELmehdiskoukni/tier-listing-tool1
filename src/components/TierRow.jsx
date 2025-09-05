@@ -19,7 +19,8 @@ const TierRow = ({
   onDragEnd = () => {},
   onAddTierBelow = () => {},
   onCardRightClick = () => {}, // Make sure this prop is here
-  isCardFromDeletedSource = () => false // New prop for checking deleted sources
+  isCardFromDeletedSource = () => false, // New prop for checking deleted sources
+  sourceCards = { competitors: [], pages: [], personas: [] } // Provide current source cards for computed image lookup
 }) => {
   const [showAddDropdown, setShowAddDropdown] = useState(false)
   const [isDropdownReady, setIsDropdownReady] = useState(false)
@@ -306,17 +307,40 @@ const TierRow = ({
             )}
             
             {/* Render existing cards */}
-            {(tier.cards || []).map(card => (
-              <Card 
-                key={card.id} 
-                card={card}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                isDragging={draggedCard?.id === card.id}
-                onRightClick={onCardRightClick}
-                isDeletedSource={isCardFromDeletedSource ? isCardFromDeletedSource(card) : false}
-              />
-            ))}
+            {(tier.cards || []).map(card => {
+              // Compute a fresh image and comments each render to avoid stale copies on tier cards
+              const allSourceCards = [
+                ...(sourceCards.competitors || []),
+                ...(sourceCards.pages || []),
+                ...(sourceCards.personas || [])
+              ];
+              // Match by text + type because tier cards don't persist a sourceCardId
+              const matchingSource = allSourceCards.find(sc => sc && card && sc.text === card.text && sc.type === card.type);
+              const sourceImageUrl = matchingSource?.imageUrl || matchingSource?.image || null;
+              const computedImageUrl = (card?.imageOverride ?? sourceImageUrl ?? card?.imageUrl ?? card?.image) || null;
+              
+              // Sync comments from source card to tier card
+              const sourceComments = matchingSource?.comments || [];
+              const computedComments = sourceComments.length > 0 ? sourceComments : (card?.comments || []);
+
+              const mergedCard = { 
+                ...card, 
+                imageUrl: computedImageUrl,
+                comments: computedComments
+              };
+
+              return (
+                <Card 
+                  key={card.id} 
+                  card={mergedCard}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                  isDragging={draggedCard?.id === card.id}
+                  onRightClick={onCardRightClick}
+                  isDeletedSource={isCardFromDeletedSource ? isCardFromDeletedSource(card) : false}
+                />
+              );
+            })}
             
             {/* Drop indicator in middle/end */}
             {isDragOver && (dragOverPosition === 'middle' || dragOverPosition === 'end') && (

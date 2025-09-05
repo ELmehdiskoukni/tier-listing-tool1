@@ -5,6 +5,7 @@ import jsPDF from 'jspdf'
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType } from 'docx'
 import { saveAs } from 'file-saver'
 import ExportPreview from './ExportPreview'
+import apiClient from '../api/apiClient'
 
 const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
   const [exportFormat, setExportFormat] = useState('pdf')
@@ -15,6 +16,32 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
   })
   const [isExporting, setIsExporting] = useState(false)
   const boardRef = useRef(null)
+
+  // Define card styles based on type - same as Card.jsx
+  const getCardStyle = (type) => {
+    switch (type) {
+      case 'image':
+        return 'bg-purple-100 border-purple-300 text-purple-800'
+      case 'text':
+        return 'bg-gray-100 border-gray-300 text-gray-800'
+      case 'page':
+        return 'bg-green-100 border-green-300 text-green-800'
+      case 'personas':
+        return 'bg-blue-100 border-blue-300 text-blue-800'
+      case 'competitor':
+        return 'bg-orange-100 border-orange-300 text-orange-800'
+      // Legacy support for old card types
+      case 'sitemaps-page':
+        return 'bg-green-100 border-green-300 text-green-800'
+      case 'competitor-text':
+      case 'competitor-img':
+        return 'bg-orange-100 border-orange-300 text-orange-800'
+      case 'persona':
+        return 'bg-blue-100 border-blue-300 text-blue-800'
+      default:
+        return 'bg-white border-gray-300 text-gray-800'
+    }
+  }
 
   // Check if a card references a deleted source item
   const isCardFromDeletedSource = (card) => {
@@ -71,13 +98,66 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
           const cardElement = document.createElement('div')
           const isDeletedSource = isCardFromDeletedSource(card)
           
-          cardElement.className = `bg-white border border-gray-300 rounded-lg p-3 shadow-sm min-w-[120px] max-w-[200px] relative ${
-            card.hidden ? 'bg-gray-200 border-gray-400' : ''
-          }`
+          // Apply proper card styling based on type
+          const cardStyleClasses = card.hidden ? 'bg-gray-200 border-gray-400' : getCardStyle(card.type)
+          cardElement.className = `${cardStyleClasses} border rounded-lg p-3 shadow-sm min-w-[120px] max-w-[200px] relative`
           
-          let cardContent = `<div class="font-medium text-gray-800 mb-1 ${
-            card.hidden ? 'text-gray-500 italic line-through' : ''
-          }">${card.hidden ? 'This item is hidden' : card.text}</div>`
+          // Check if card has an image
+          const hasImage = (card.imageUrl && card.imageUrl !== null) || (card.image && card.image !== null)
+          const isImageCard = card.subtype === 'image' && hasImage
+          const rawImage = card.imageUrl || card.image
+          const isBase64 = typeof rawImage === 'string' && rawImage.startsWith('data:image')
+          
+          let cardContent = ''
+          
+          if (isImageCard && hasImage) {
+            // For external images that might have CORS issues, we'll render as text with image indicator
+            // Only base64 images are guaranteed to work in html2canvas exports
+            if (isBase64) {
+              // Base64 image - safe to render
+              cardContent = `
+                <div class="flex flex-col items-center gap-1">
+                  <img 
+                    src="${rawImage}" 
+                    alt="${card.text}"
+                    class="w-12 h-12 object-cover rounded ${card.hidden ? 'opacity-50 grayscale' : ''}"
+                    style="display: block;"
+                  />
+                  <span class="text-xs text-center leading-tight px-1 ${
+                    card.hidden ? 'text-gray-500 italic' : ''
+                  }">
+                    ${card.hidden ? 'This item is hidden' : card.text}
+                  </span>
+                </div>
+              `
+            } else {
+              // External image - use backend proxy to bypass CORS
+              const baseApi = apiClient?.defaults?.baseURL || 'http://localhost:4000/api'
+              const proxiedUrl = `${baseApi}/proxy/image?url=${encodeURIComponent(rawImage)}`
+              cardContent = `
+                <div class="flex flex-col items-center gap-1">
+                  <img 
+                    src="${proxiedUrl}" 
+                    alt="${card.text}"
+                    crossOrigin="anonymous"
+                    class="w-12 h-12 object-cover rounded ${card.hidden ? 'opacity-50 grayscale' : ''}"
+                    style="display: block;"
+                    onerror="this.style.display='none'"
+                  />
+                  <span class="text-xs text-center leading-tight px-1 ${
+                    card.hidden ? 'text-gray-500 italic' : ''
+                  }">
+                    ${card.hidden ? 'This item is hidden' : card.text}
+                  </span>
+                </div>
+              `
+            }
+          } else {
+            // Text card or image card without image
+            cardContent = `<div class="font-medium text-gray-800 mb-1 ${
+              card.hidden ? 'text-gray-500 italic line-through' : ''
+            }">${card.hidden ? 'This item is hidden' : card.text}</div>`
+          }
           
           if (exportOptions.includeComments && card.comments && card.comments.length > 0) {
             cardContent += `<div class="text-xs text-gray-500">${card.comments.length} comment${card.comments.length > 1 ? 's' : ''}</div>`
@@ -146,12 +226,13 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
       console.log('Element:', element)
       
       const canvas = await html2canvas(element, {
-        scale: 2,
+        scale: 3, // match high DPI used for PNG/JPEG
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
         width: element.scrollWidth,
         height: element.scrollHeight,
+        imageTimeout: 0, // avoid image timeout for external logos
         logging: true
       })
 
@@ -286,19 +367,29 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
       console.log('Element:', element)
       
       const canvas = await html2canvas(element, {
-        scale: exportOptions.imageQuality === 'high' ? 2 : 1,
+        scale: 3, // High DPI for crisp exports
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
+        imageTimeout: 0, // Avoid timeout issues with images
         logging: true
       })
 
       console.log('Canvas created:', canvas)
 
-      canvas.toBlob((blob) => {
+      if (format === 'jpeg') {
+        // For JPEG, use maximum quality (1.0)
+        const dataURL = canvas.toDataURL('image/jpeg', 1.0)
+        const blob = await fetch(dataURL).then(res => res.blob())
         saveAs(blob, `tier-board.${format}`)
-        console.log(`${format.toUpperCase()} export completed successfully`)
-      }, `image/${format}`)
+      } else {
+        // For PNG, use lossless compression
+        canvas.toBlob((blob) => {
+          saveAs(blob, `tier-board.${format}`)
+        }, `image/${format}`)
+      }
+      
+      console.log(`${format.toUpperCase()} export completed successfully`)
     } catch (error) {
       console.error(`${format.toUpperCase()} export error:`, error)
       throw error
@@ -335,9 +426,9 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 lg:items-start">
             {/* Export Options */}
-            <div className="space-y-6 lg:col-span-3">
+            <div className="space-y-6 lg:col-span-3 lg:flex lg:flex-col lg:justify-center lg:h-full lg:min-h-[400px]">
               <div>
                 <h3 className="text-lg font-semibold mb-3">Export Format</h3>
                 <select
@@ -377,7 +468,11 @@ const ExportModal = ({ isOpen, onClose, tiers, sourceCards }) => {
             {/* Preview */}
             <div className="lg:col-span-7">
               <h3 className="text-lg font-semibold mb-3">Preview</h3>
-              {renderBoardPreview()}
+              <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 max-h-[500px] overflow-auto">
+                <div className="transform scale-75 origin-top-left w-[133%]">
+                  {renderBoardPreview()}
+                </div>
+              </div>
             </div>
           </div>
         </div>

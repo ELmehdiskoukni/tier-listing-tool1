@@ -60,6 +60,10 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
   // Check if card has an image
   const hasImage = (card.imageUrl && card.imageUrl !== null) || (card.image && card.image !== null)
   const isImageCard = card.subtype === 'image' && hasImage
+  // Compute a safe img src: if it's a base64 data URI, use as-is; otherwise pass through URL as provided
+  const rawImage = card.imageUrl || card.image
+  const isBase64 = typeof rawImage === 'string' && rawImage.startsWith('data:image')
+  const imgSrc = isBase64 ? rawImage : rawImage
   const isHidden = card.hidden
 
   return (
@@ -121,7 +125,7 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
         // Image card with actual image
         <div className="flex flex-col items-center gap-1">
           <img 
-            src={card.imageUrl || card.image} 
+            src={imgSrc} 
             alt={card.text}
             draggable={false}
            className={`w-12 h-12 object-cover rounded ${isDeletedSource || isHidden ? 'opacity-50 grayscale' : ''}`}

@@ -12,6 +12,7 @@ import cardRoutes from './routes/cards.js';
 import sourceCardRoutes from './routes/sourceCards.js';
 import commentRoutes from './routes/comments.js';
 import versionRoutes from './routes/versions.js';
+import proxyRoutes from './routes/proxy.js';
 
 // Import database connection
 import { pool } from './config/database.js';
@@ -113,6 +114,7 @@ app.use('/api/cards', cardRoutes);
 app.use('/api/source-cards', sourceCardRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/versions', versionRoutes);
+app.use('/api/proxy', proxyRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

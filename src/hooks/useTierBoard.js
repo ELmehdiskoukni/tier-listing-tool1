@@ -439,6 +439,19 @@ const duplicateTier = async (id) => {
       ));
     }
     
+    // Version history: Duplicated tier
+    try {
+      const sourceTier = tiers.find(t => t.id === id);
+      const description = `Duplicated tier '${sourceTier?.name || 'Tier'}'`;
+      await createVersion({
+        description,
+        tiersData: JSON.parse(JSON.stringify(sanitizedTiers)),
+        sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+      });
+    } catch (e) {
+      console.warn('Failed to create version for duplicateTier:', e);
+    }
+    
     return newTier;
   } catch (err) {
     const errorMessage = handleAPIError(err, 'Failed to duplicate tier');
@@ -603,6 +616,18 @@ const duplicateTier = async (id) => {
         ));
       }
       
+      // Version history: Added tier
+      try {
+        const description = `Added tier '${newTier.name || 'Tier'}'`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(sanitizedTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for createTier:', e);
+      }
+      
       return newTier;
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to create tier');
@@ -664,6 +689,23 @@ const duplicateTier = async (id) => {
         ));
       }
       
+      // Version history: Updated/Renamed/Color changed tier
+      try {
+        let vDesc = `Updated tier '${tierToUpdate?.name || 'Tier'}'`;
+        if (tierData.name && tierData.name !== tierToUpdate?.name) {
+          vDesc = `Renamed tier '${tierToUpdate?.name || 'Tier'}' to '${tierData.name}'`;
+        } else if (tierData.color && tierData.color !== tierToUpdate?.color) {
+          vDesc = `Changed tier '${tierToUpdate?.name || 'Tier'}' color to ${tierData.color.replace('bg-', '').replace('-200', '')}`;
+        }
+        await createVersion({
+          description: vDesc,
+          tiersData: JSON.parse(JSON.stringify(sanitizedTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for updateTier:', e);
+      }
+      
       return updatedTier;
     } catch (err) {
       console.log('🔍 updateTier error details:', err.response?.data)
@@ -716,6 +758,18 @@ const duplicateTier = async (id) => {
           newState
         ));
       }
+      
+      // Version history: Deleted tier
+      try {
+        const description = `Deleted tier '${tierToDelete?.name || 'Tier'}'`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(sanitizedTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for deleteTier:', e);
+      }
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to delete tier');
       setError(errorMessage);
@@ -746,6 +800,18 @@ const duplicateTier = async (id) => {
           previousState,
           newState
         ));
+      }
+      
+      // Version history: Reordered tier
+      try {
+        const description = `Reordered tiers: moved '${tierToMove?.name || 'Tier'}' ${direction === 'up' ? 'up' : 'down'}`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for moveTierPosition:', e);
       }
       
       return updatedTiers;
@@ -881,6 +947,22 @@ const duplicateTier = async (id) => {
         personas: updatedSourceCards.personas || []
       });
       
+      // Version history: Added source card
+      try {
+        const description = `Added source card '${newCard.text || 'Card'}'`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(tiers)),
+          sourceCardsData: JSON.parse(JSON.stringify({
+            competitors: updatedSourceCards.competitors || [],
+            pages: updatedSourceCards.pages || [],
+            personas: updatedSourceCards.personas || []
+          }))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for createSourceCard:', e);
+      }
+      
       return newCard;
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to create source card');
@@ -913,6 +995,9 @@ const duplicateTier = async (id) => {
       const cacheBuster = Date.now();
       const addBust = (url) => {
         if (!url) return url;
+        // Do NOT append cache-buster to data URIs (e.g., base64 images)
+        // Appending query params to data: URLs makes them invalid and triggers ERR_INVALID_URL
+        if (typeof url === 'string' && url.startsWith('data:image')) return url;
         return url.includes('?') ? `${url}&v=${cacheBuster}` : `${url}?v=${cacheBuster}`;
       };
       const imageWasUpdated = Object.prototype.hasOwnProperty.call(cardData || {}, 'imageUrl') && cardData.imageUrl !== undefined;
@@ -932,24 +1017,85 @@ const duplicateTier = async (id) => {
       setSourceCards(nextSourceCards);
 
       // Also reload tiers so tier cards reflect the new source name/image immediately
-      console.log('🔍 About to reload tiers from API after source rename...')
+      console.log('🔍 About to reload tiers from API after source update...')
       const tiersResponse = await tierAPI.getAllTiersWithCards();
       const updatedTiers = tiersResponse.data.data || tiersResponse.data;
-      // If image changed, apply cache-buster to matching tier cards (matched by updated text and type)
+      
+      // If image changed, ensure tier cards get the updated image from the source card
       const nextTiers = imageWasUpdated
         ? (Array.isArray(updatedTiers) ? updatedTiers.map(tier => ({
             ...tier,
-            cards: (tier.cards || []).map(card =>
-              card && card.text === updatedCard.text && card.type === updatedCard.type
-                ? { ...card, imageUrl: addBust(card.imageUrl || card.image) }
-                : card
-            )
+            cards: (tier.cards || []).map(card => {
+              if (card && card.text === updatedCard.text && card.type === updatedCard.type) {
+                // Force tier cards to use the updated source card's image
+                const sourceImageUrl = updatedCard.imageUrl;
+                console.log('🔍 Syncing tier card image:', {
+                  cardText: card.text,
+                  currentImageUrl: card.imageUrl,
+                  sourceImageUrl: sourceImageUrl,
+                  willUpdate: !!sourceImageUrl
+                });
+                
+                return sourceImageUrl 
+                  ? { ...card, imageUrl: addBust(sourceImageUrl) }
+                  : { ...card, imageUrl: null }; // Clear image if source has no image
+              }
+              return card;
+            })
           })) : updatedTiers)
         : updatedTiers;
 
       setTiersFiltered(nextTiers);
 
-      return updatedCard;
+    // Create a Version History entry when image was updated
+    if (imageWasUpdated) {
+      try {
+        // Determine whether image was added/updated/removed based on previous value
+        const prevAll = [
+          ...(prevSourceCards.competitors || []),
+          ...(prevSourceCards.pages || []),
+          ...(prevSourceCards.personas || [])
+        ];
+        const prev = prevAll.find(c => c.id === id);
+        const prevImage = prev?.imageUrl || null;
+        const newImage = updatedCard?.imageUrl || null;
+        let description = `Updated image for '${updatedCard?.text || 'Card'}'`;
+        if (prevImage && !newImage) description = `Removed image for '${updatedCard?.text || 'Card'}'`;
+        else if (!prevImage && newImage) description = `Added image for '${updatedCard?.text || 'Card'}'`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(nextTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(nextSourceCards))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for updateSourceCard (image change):', e);
+      }
+    }
+
+    // Create a Version History entry when name was updated
+    try {
+      // Find previous card across groups by id
+      const prevAll = [
+        ...(prevSourceCards.competitors || []),
+        ...(prevSourceCards.pages || []),
+        ...(prevSourceCards.personas || [])
+      ];
+      const prev = prevAll.find(c => c.id === id);
+      const prevName = prev?.text;
+      const newName = updatedCard?.text;
+      if (typeof prevName === 'string' && typeof newName === 'string' && prevName !== newName) {
+        const description = `Renamed card '${prevName}' to '${newName}'`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(nextTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(nextSourceCards))
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to create version for updateSourceCard (rename):', e);
+    }
+
+    return updatedCard;
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to update source card');
       setError(errorMessage);
@@ -960,6 +1106,8 @@ const duplicateTier = async (id) => {
   const deleteSourceCard = async (id, sourceCategory) => {
     try {
       console.log('🔍 deleteSourceCard called with id:', id, 'sourceCategory:', sourceCategory)
+      // Get previous card for messaging
+      const prev = sourceCards[sourceCategory]?.find(c => c.id === id);
       await sourceCardAPI.deleteSourceCard(id);
       console.log('🔍 Source card deleted, about to reload source cards from API...')
       
@@ -983,6 +1131,22 @@ const duplicateTier = async (id) => {
             card.type === sourceCards[sourceCategory]?.find(c => c.id === id)?.type)
         )
       })));
+
+      // Version history: Deleted source card
+      try {
+        const description = `Deleted source card '${prev?.text || 'Card'}'`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(tiers)),
+          sourceCardsData: JSON.parse(JSON.stringify({
+            competitors: updatedSourceCards.competitors || [],
+            pages: updatedSourceCards.pages || [],
+            personas: updatedSourceCards.personas || []
+          }))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for deleteSourceCard:', e);
+      }
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to delete source card');
       setError(errorMessage);
@@ -1031,6 +1195,19 @@ const duplicateTier = async (id) => {
         ));
       }
       
+      // Version history: Added card
+      try {
+        const targetTier = updatedTiers.find(t => t.id === cardData.tierId);
+        const description = `Added card '${newCard.text || 'Card'}' to tier ${targetTier?.name || 'tier'}`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for createCard:', e);
+      }
+      
       console.log('🔍 setTiers called with reloaded data, returning newCard')
       return newCard;
     } catch (err) {
@@ -1043,6 +1220,10 @@ const duplicateTier = async (id) => {
 
   const updateCard = async (id, cardData) => {
     try {
+      // Capture previous name before update for rename detection
+      const prevCard = (tiers.flatMap(t => t.cards || [])).find(c => c.id === id);
+      const prevName = prevCard?.text;
+      const prevImage = prevCard?.imageUrl || null;
       const response = await cardAPI.updateCard(id, cardData);
       const updatedCard = response.data.data || response.data;
       
@@ -1069,6 +1250,41 @@ const duplicateTier = async (id) => {
         }));
       }
       
+      // If name changed, create a Version History entry
+      try {
+        const newName = updatedCard?.text;
+        if (typeof prevName === 'string' && typeof newName === 'string' && prevName !== newName) {
+          const description = `Renamed card '${prevName}' to '${newName}'`;
+          await createVersion({
+            description,
+            tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+            sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to create version for updateCard (rename):', e);
+      }
+
+      // If image changed, create a Version History entry (added/updated/removed)
+      try {
+        const newImage = updatedCard?.imageUrl || null;
+        if (prevImage !== newImage) {
+          let description = null;
+          if (prevImage && !newImage) description = `Removed image for '${updatedCard?.text || 'Card'}'`;
+          else if (!prevImage && newImage) description = `Added image for '${updatedCard?.text || 'Card'}'`;
+          else if (prevImage && newImage) description = `Updated image for '${updatedCard?.text || 'Card'}'`;
+          if (description) {
+            await createVersion({
+              description,
+              tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+              sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to create version for updateCard (image change):', e);
+      }
+
       return updatedCard;
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to update card');
@@ -1119,6 +1335,18 @@ const duplicateTier = async (id) => {
           newState
         ));
       }
+      
+      // Version history: Deleted card
+      try {
+        const description = `Deleted card '${cardToDelete?.text || 'Card'}' from tier ${tierName}`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for deleteCard:', e);
+      }
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to delete card');
       setError(errorMessage);
@@ -1162,6 +1390,21 @@ const duplicateTier = async (id) => {
           previousState,
           newState
         ));
+      }
+      
+      // Version history: Moved card between tiers
+      try {
+        const card = updatedTiers.flatMap(t => t.cards || []).find(c => c.id === id);
+        const targetTier = updatedTiers.find(t => t.id === moveData.targetTierId);
+        const sourceTierPrev = previousState.tiers.find(t => (t.cards || []).some(c => c.id === id));
+        const description = `Moved card '${card?.text || 'Card'}' from ${sourceTierPrev?.name || 'tier'} to ${targetTier?.name || 'tier'}`;
+        await createVersion({
+          description,
+          tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
+        });
+      } catch (e) {
+        console.warn('Failed to create version for moveCard:', e);
       }
       
       return updatedTiers;
@@ -1313,12 +1556,9 @@ const duplicateTier = async (id) => {
       
       // Instead of updating local state, reload the entire tiers data from API
       // This ensures we always have the latest data and avoids race conditions
-      // Reload both tiers and source cards to refresh comment counts/arrays
-      const [tiersResponse, sourceCardsResponse] = await Promise.all([
-        tierAPI.getAllTiersWithCards(),
-        sourceCardAPI.getAllSourceCardsGrouped()
-      ]);
+      const tiersResponse = await tierAPI.getAllTiersWithCards();
       const updatedTiers = tiersResponse.data.data || tiersResponse.data;
+      const sourceCardsResponse = await sourceCardAPI.getAllSourceCardsGrouped();
       const updatedSourceCards = sourceCardsResponse.data.data || sourceCardsResponse.data;
       
       console.log('🔍 Reloaded tiers from API after create comment:', updatedTiers)
@@ -1330,6 +1570,42 @@ const duplicateTier = async (id) => {
         pages: updatedSourceCards.pages || [],
         personas: updatedSourceCards.personas || []
       });
+
+      // If this was a source card comment, create version history entry and sync to tier cards
+      if (isSourceCard) {
+        try {
+          const sourceCard = commentData.card;
+          const description = `Added comment to '${sourceCard?.text || 'Card'}'`;
+          await createVersion({
+            description,
+            tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+            sourceCardsData: JSON.parse(JSON.stringify({
+              competitors: updatedSourceCards.competitors || [],
+              pages: updatedSourceCards.pages || [],
+              personas: updatedSourceCards.personas || []
+            }))
+          });
+        } catch (e) {
+          console.warn('Failed to create version for createComment (source card):', e);
+        }
+      } else {
+        // Tier card comment
+        try {
+          const cardText = commentData?.card?.text || 'Card';
+          const description = `Added comment to '${cardText}'`;
+          await createVersion({
+            description,
+            tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+            sourceCardsData: JSON.parse(JSON.stringify({
+              competitors: updatedSourceCards.competitors || [],
+              pages: updatedSourceCards.pages || [],
+              personas: updatedSourceCards.personas || []
+            }))
+          });
+        } catch (e) {
+          console.warn('Failed to create version for createComment (tier card):', e);
+        }
+      }
       
       return newComment;
     } catch (err) {
@@ -1341,6 +1617,8 @@ const duplicateTier = async (id) => {
 
   const deleteComment = async (id, cardId) => {
     try {
+      // Take a snapshot of current tiers to reference card text after deletion
+      const prevTiersSnapshot = JSON.parse(JSON.stringify(tiers || []));
       // Determine if this is a source card by searching current source cards
       const allSourceCards = [
         ...(sourceCards.competitors || []),
@@ -1374,6 +1652,43 @@ const duplicateTier = async (id) => {
         pages: updatedSourceCards.pages || [],
         personas: updatedSourceCards.personas || []
       });
+
+      // If this was a source card comment, create version history entry
+      if (sourceCard) {
+        try {
+          const description = `Deleted comment from '${sourceCard?.text || 'Card'}'`;
+          await createVersion({
+            description,
+            tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+            sourceCardsData: JSON.parse(JSON.stringify({
+              competitors: updatedSourceCards.competitors || [],
+              pages: updatedSourceCards.pages || [],
+              personas: updatedSourceCards.personas || []
+            }))
+          });
+        } catch (e) {
+          console.warn('Failed to create version for deleteComment (source card):', e);
+        }
+      } else {
+        // Tier card comment deletion
+        try {
+          // Find the tier card by id in previous tiers snapshot (before reload), fallback to updated
+          const prevCard = prevTiersSnapshot.flatMap(t => t.cards || []).find(c => c.id === cardId)
+            || updatedTiers.flatMap(t => t.cards || []).find(c => c.id === cardId);
+          const description = `Deleted comment from '${prevCard?.text || 'Card'}'`;
+          await createVersion({
+            description,
+            tiersData: JSON.parse(JSON.stringify(updatedTiers)),
+            sourceCardsData: JSON.parse(JSON.stringify({
+              competitors: updatedSourceCards.competitors || [],
+              pages: updatedSourceCards.pages || [],
+              personas: updatedSourceCards.personas || []
+            }))
+          });
+        } catch (e) {
+          console.warn('Failed to create version for deleteComment (tier card):', e);
+        }
+      }
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to delete comment');
       setError(errorMessage);
@@ -1625,27 +1940,27 @@ const duplicateTier = async (id) => {
       for (let i = 0; i < versionTiers.length; i++) {
         const versionTier = versionTiers[i];
         const currentTier = currentTiers[i];
-        
-        if (!currentTier || 
+
+        if (!currentTier ||
             versionTier.id !== currentTier.id ||
             versionTier.name !== currentTier.name ||
             versionTier.color !== currentTier.color ||
             versionTier.position !== currentTier.position) {
           return false;
         }
-        
+
         // Compare cards in tier
-        const versionCards = versionTier.cards || [];
-        const currentCards = currentTier.cards || [];
-        
+        const versionCards = Array.isArray(versionTier.cards) ? versionTier.cards : [];
+        const currentCards = Array.isArray(currentTier.cards) ? currentTier.cards : [];
+
         if (versionCards.length !== currentCards.length) {
           return false;
         }
-        
+
         for (let j = 0; j < versionCards.length; j++) {
           const versionCard = versionCards[j];
           const currentCard = currentCards[j];
-          
+
           if (!currentCard ||
               versionCard.id !== currentCard.id ||
               versionCard.text !== currentCard.text ||
@@ -1654,32 +1969,62 @@ const duplicateTier = async (id) => {
               versionCard.position !== currentCard.position) {
             return false;
           }
+
+          // Compare comments on the card (ensure comment changes affect version equality)
+          const versionComments = Array.isArray(versionCard.comments) ? versionCard.comments : [];
+          const currentComments = Array.isArray(currentCard.comments) ? currentCard.comments : [];
+
+          if (versionComments.length !== currentComments.length) {
+            return false;
+          }
+
+          for (let k = 0; k < versionComments.length; k++) {
+            const vCom = versionComments[k] || {};
+            const cCom = currentComments[k] || {};
+            if (vCom.id !== cCom.id || vCom.text !== cCom.text) {
+              return false;
+            }
+          }
         }
       }
-      
+
       // Compare source cards
       const sourceCategories = ['competitors', 'pages', 'personas'];
       for (const category of sourceCategories) {
-        const versionCategoryCards = versionSourceCards[category] || [];
-        const currentCategoryCards = currentSourceCards[category] || [];
-        
+        const versionCategoryCards = (versionSourceCards && versionSourceCards[category]) ? versionSourceCards[category] : [];
+        const currentCategoryCards = (currentSourceCards && currentSourceCards[category]) ? currentSourceCards[category] : [];
+
         if (versionCategoryCards.length !== currentCategoryCards.length) {
           return false;
         }
-        
+
         for (let i = 0; i < versionCategoryCards.length; i++) {
           const versionCard = versionCategoryCards[i];
           const currentCard = currentCategoryCards[i];
-          
+
           if (!currentCard ||
               versionCard.id !== currentCard.id ||
               versionCard.text !== currentCard.text ||
               versionCard.type !== currentCard.type) {
             return false;
           }
+
+          // Compare comments on source cards (if present)
+          const vComms = Array.isArray(versionCard.comments) ? versionCard.comments : [];
+          const cComms = Array.isArray(currentCard.comments) ? currentCard.comments : [];
+          if (vComms.length !== cComms.length) {
+            return false;
+          }
+          for (let k = 0; k < vComms.length; k++) {
+            const vCom = vComms[k] || {};
+            const cCom = cComms[k] || {};
+            if (vCom.id !== cCom.id || vCom.text !== cCom.text) {
+              return false;
+            }
+          }
         }
       }
-      
+
       return true;
     } catch (error) {
       console.error('Error comparing version state:', error);

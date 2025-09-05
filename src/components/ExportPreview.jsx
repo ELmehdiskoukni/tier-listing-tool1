@@ -1,17 +1,30 @@
 import React from 'react'
+import apiClient from '../api/apiClient'
 
 const ExportPreview = ({ tiers = [], sourceCards = {}, exportOptions = {} }) => {
-  // Color mapping for source categories
-  const getCategoryColor = (category) => {
-    switch (category) {
-      case 'competitors':
-        return 'bg-orange-100 text-orange-800 border-orange-200'
-      case 'pages':
-        return 'bg-green-100 text-green-800 border-green-200'
+  // Define card styles based on type - same as Card.jsx
+  const getCardStyle = (type) => {
+    switch (type) {
+      case 'image':
+        return 'bg-purple-100 border-purple-300 text-purple-800'
+      case 'text':
+        return 'bg-gray-100 border-gray-300 text-gray-800'
+      case 'page':
+        return 'bg-green-100 border-green-300 text-green-800'
       case 'personas':
-        return 'bg-blue-100 text-blue-800 border-blue-200'
+        return 'bg-blue-100 border-blue-300 text-blue-800'
+      case 'competitor':
+        return 'bg-orange-100 border-orange-300 text-orange-800'
+      // Legacy support for old card types
+      case 'sitemaps-page':
+        return 'bg-green-100 border-green-300 text-green-800'
+      case 'competitor-text':
+      case 'competitor-img':
+        return 'bg-orange-100 border-orange-300 text-orange-800'
+      case 'persona':
+        return 'bg-blue-100 border-blue-300 text-blue-800'
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200'
+        return 'bg-white border-gray-300 text-gray-800'
     }
   }
 
@@ -66,12 +79,19 @@ const ExportPreview = ({ tiers = [], sourceCards = {}, exportOptions = {} }) => 
                       .filter(card => !card.hidden || exportOptions.includeHiddenCards)
                       .map(card => {
                         const isDeletedSource = isCardFromDeletedSource(card)
+                        // Apply proper card styling based on type
+                        const cardStyleClasses = card.hidden ? 'bg-gray-200 border-gray-400' : getCardStyle(card.type)
+                        const hasImage = (card.imageUrl && card.imageUrl !== null) || (card.image && card.image !== null)
+                        const isImageCard = card.subtype === 'image' && hasImage
+                        const rawImage = card.imageUrl || card.image
+                        const isBase64 = typeof rawImage === 'string' && rawImage.startsWith('data:image')
+                        const baseApi = apiClient?.defaults?.baseURL || 'http://localhost:4000/api'
+                        const proxiedUrl = rawImage && !isBase64 ? `${baseApi}/proxy/image?url=${encodeURIComponent(rawImage)}` : null
+                        
                         return (
                           <div 
                             key={card.id} 
-                            className={`bg-white border border-gray-300 rounded-lg p-3 shadow-sm min-w-[120px] max-w-[200px] relative ${
-                              card.hidden ? 'bg-gray-200 border-gray-400' : ''
-                            }`}
+                            className={`${cardStyleClasses} border rounded-lg p-3 shadow-sm min-w-[120px] max-w-[200px] relative`}
                           >
                             {/* Hidden card indicator */}
                             {card.hidden && (
@@ -81,11 +101,30 @@ const ExportPreview = ({ tiers = [], sourceCards = {}, exportOptions = {} }) => 
                                 </svg>
                               </div>
                             )}
-                            <div className={`font-medium text-gray-800 mb-1 ${
-                              card.hidden ? 'text-gray-500 italic line-through' : ''
-                            }`}>
-                              {card.hidden ? 'This item is hidden' : card.text}
-                            </div>
+                            {isImageCard ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <img
+                                  src={isBase64 ? rawImage : proxiedUrl}
+                                  alt={card.text}
+                                  crossOrigin="anonymous"
+                                  className={`w-12 h-12 object-cover rounded ${card.hidden ? 'opacity-50 grayscale' : ''}`}
+                                  style={{ display: 'block' }}
+                                  onError={(e) => {
+                                    // graceful fallback to placeholder if proxy fails
+                                    e.currentTarget.style.display = 'none'
+                                  }}
+                                />
+                                <span className={`text-xs text-center leading-tight px-1 ${card.hidden ? 'text-gray-500 italic' : ''}`}>
+                                  {card.hidden ? 'This item is hidden' : card.text}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className={`font-medium text-gray-800 mb-1 ${
+                                card.hidden ? 'text-gray-500 italic line-through' : ''
+                              }`}>
+                                {card.hidden ? 'This item is hidden' : card.text}
+                              </div>
+                            )}
                             {exportOptions.includeComments && card.comments && card.comments.length > 0 && (
                               <div className="text-xs text-gray-500">
                                 {card.comments.length} comment{card.comments.length > 1 ? 's' : ''}

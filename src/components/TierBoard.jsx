@@ -1210,23 +1210,24 @@ const TierBoard = () => {
                 tier={tier}
                 isFirst={index === 0}
                 isLast={index === (tiers?.length || 0) - 1}
-              onMoveTierUp={() => moveTierUp(tier.id)}
-              onMoveTierDown={() => moveTierDown(tier.id)}
-              onAddCard={() => addCard(tier.id)}
-              onImportCards={(sourceType) => importCards(tier.id, sourceType)}
-              onOpenOptionsMenu={(position) => openTierOptionsMenu(tier.id, position)}
-              onOpenOptions={(action, data) => openTierOptions(tier.id, action, data)}
-              onMoveCard={handleMoveCard}
-              draggedCard={draggedCard}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-                            onAddTierBelow={() => addTierBelow(tier.id)}
-              onCardRightClick={handleCardRightClick}
-              isCardFromDeletedSource={isCardFromDeletedSource}
-            />
-          ))}
-        </div>
-      )}
+                sourceCards={sourceCards}
+                onMoveTierUp={() => moveTierUp(tier.id)}
+                onMoveTierDown={() => moveTierDown(tier.id)}
+                onAddCard={() => addCard(tier.id)}
+                onImportCards={(sourceType) => importCards(tier.id, sourceType)}
+                onOpenOptionsMenu={(position) => openTierOptionsMenu(tier.id, position)}
+                onOpenOptions={(action, data) => openTierOptions(tier.id, action, data)}
+                onMoveCard={handleMoveCard}
+                draggedCard={draggedCard}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onAddTierBelow={() => addTierBelow(tier.id)}
+                onCardRightClick={handleCardRightClick}
+                isCardFromDeletedSource={isCardFromDeletedSource}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Card Context Menu */}

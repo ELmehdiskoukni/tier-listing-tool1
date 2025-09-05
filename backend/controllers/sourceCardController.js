@@ -271,15 +271,68 @@ export const createSourceComment = asyncHandler(async (req, res) => {
     `INSERT INTO source_comments (comment_id, text, source_card_id) VALUES ($1, $2, $3) RETURNING comment_id as id, text, source_card_id as sourceCardId, created_at, updated_at`,
     [commentId, text, id]
   );
+
+  // Propagate comment to all tier cards that match this source card (by text + type)
+  try {
+    // Find all tier cards that match this source card
+    const tierCardsResult = await pool.query(
+      `SELECT id FROM cards WHERE text = $1 AND type = $2`,
+      [card.text, card.type]
+    );
+
+    // Add the same comment to each matching tier card
+    for (const tierCard of tierCardsResult.rows) {
+      const tierCommentId = `tier-comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      await pool.query(
+        `INSERT INTO comments (comment_id, text, card_id, created_at, updated_at) 
+         VALUES ($1, $2, $3, $4, $4)`,
+        [tierCommentId, text, tierCard.id, result.rows[0].created_at]
+      );
+    }
+  } catch (e) {
+    // Log and continue; do not fail the source comment creation
+    console.error('Failed to propagate source comment to tier cards:', e);
+  }
+
   res.status(201).json({ success: true, data: result.rows[0] });
 });
 
 export const deleteSourceComment = asyncHandler(async (req, res) => {
   const { commentId } = req.params;
-  const result = await pool.query(`DELETE FROM source_comments WHERE comment_id = $1 RETURNING comment_id`, [commentId]);
-  if (result.rows.length === 0) {
+  
+  // Get the comment and source card info before deletion for propagation
+  const commentResult = await pool.query(
+    `SELECT sc.text, sc.comment_id, src.text as source_text, src.type as source_type 
+     FROM source_comments sc 
+     JOIN source_cards src ON sc.source_card_id = src.id 
+     WHERE sc.comment_id = $1`,
+    [commentId]
+  );
+  
+  if (commentResult.rows.length === 0) {
     return res.status(404).json({ success: false, error: 'Comment not found' });
   }
+  
+  const commentData = commentResult.rows[0];
+  
+  // Delete the source comment
+  const result = await pool.query(`DELETE FROM source_comments WHERE comment_id = $1 RETURNING comment_id`, [commentId]);
+  
+  // Propagate deletion to all tier cards that match this source card (by text + type)
+  try {
+    // Find all tier cards that match this source card and delete matching comments
+    await pool.query(
+      `DELETE FROM comments 
+       WHERE card_id IN (
+         SELECT id FROM cards WHERE text = $1 AND type = $2
+       ) AND text = $3`,
+      [commentData.source_text, commentData.source_type, commentData.text]
+    );
+  } catch (e) {
+    // Log and continue; do not fail the source comment deletion
+    console.error('Failed to propagate source comment deletion to tier cards:', e);
+  }
+  
   res.json({ success: true, message: 'Comment deleted successfully' });
 });
 
