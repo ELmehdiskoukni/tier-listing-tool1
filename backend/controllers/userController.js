@@ -153,3 +153,30 @@ export const getUserStats = asyncHandler(async (req, res) => {
     data: stats
   });
 });
+
+// Verify user credentials
+export const verifyUser = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+  
+  // Validation
+  if (!email || !password) {
+    return res.status(400).json({
+      success: false,
+      error: 'Email and password are required'
+    });
+  }
+  
+  const user = await User.verifyPassword(email, password);
+  
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid email or password'
+    });
+  }
+  
+  res.json({
+    success: true,
+    data: user
+  });
+});

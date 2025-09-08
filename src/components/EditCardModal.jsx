@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { toast } from 'react-toastify'
-import { usersAPI } from '../api/apiClient'
+import apiClient, { usersAPI } from '../api/apiClient'
 
 const EditCardModal = ({ isOpen, onClose, card, onSave, onRefreshData }) => {
   const [cardText, setCardText] = useState('')

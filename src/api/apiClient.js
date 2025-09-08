@@ -229,6 +229,17 @@ export const usersAPI = {
   
   // Get user stats
   getStats: () => apiClient.get('/users/stats'),
+  
+  // Verify user credentials
+  verifyCredentials: async (email, password) => {
+    try {
+      const response = await apiClient.post('/users/verify', { email, password });
+      return response.data.success ? response.data.data : null;
+    } catch (error) {
+      console.error('User verification failed:', error);
+      return null;
+    }
+  },
 };
 
 // Utility function to handle API errors
@@ -253,6 +264,11 @@ export const checkServerHealth = async () => {
     console.error('Server health check failed:', error);
     return false;
   }
+};
+
+// Add verifyUser method to the main apiClient object
+apiClient.verifyUser = async (email, password) => {
+  return await usersAPI.verifyCredentials(email, password);
 };
 
 export default apiClient; 

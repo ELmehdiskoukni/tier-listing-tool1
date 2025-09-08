@@ -18,9 +18,9 @@ import PickAnotherPersonaModal from './PickAnotherPersonaModal'
 import AddPersonaModal from './AddPersonaModal'
 import UndoRedoButtons from './UndoRedoButtons'
 import { useTierBoard } from '../hooks/useTierBoard'
-import { tierAPI, sourceCardAPI, usersAPI } from '../api/apiClient'
+import apiClient, { tierAPI, sourceCardAPI, usersAPI } from '../api/apiClient'
 
-const TierBoard = () => {
+const TierBoard = ({ hideSourceCards = false }) => {
   // Use the API hook for data management
   const {
     tiers,
@@ -1145,16 +1145,18 @@ const TierBoard = () => {
         </div>
       )}
 
-      {/* Source Area - Above Tier Board */}
-      <SourceArea 
-        sourceCards={sourceCards}
-        onAddSourceCard={handleAddSourceCard}
-        onAddPersona={handleAddPersona}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        draggedCard={draggedCard}
-        onCardRightClick={handleCardRightClick}
-      />
+      {/* Source Area - Above Tier Board (conditionally rendered) */}
+      {!hideSourceCards && (
+        <SourceArea 
+          sourceCards={sourceCards}
+          onAddSourceCard={handleAddSourceCard}
+          onAddPersona={handleAddPersona}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          draggedCard={draggedCard}
+          onCardRightClick={handleCardRightClick}
+        />
+      )}
 
       {/* Main Tier Board */}
       <div className="bg-white rounded-lg shadow-lg p-6 tier-board-container">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { tierAPI, sourceCardAPI, cardAPI, commentAPI, versionAPI, usersAPI, handleAPIError } from '../api/apiClient';
+import apiClient, { tierAPI, sourceCardAPI, cardAPI, commentAPI, versionAPI, usersAPI, handleAPIError } from '../api/apiClient';
 import { useUndoRedo, ACTION_TYPES } from './useUndoRedo';
 
 export const useTierBoard = () => {

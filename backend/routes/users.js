@@ -5,7 +5,8 @@ import {
   createUser,
   updateUser,
   deleteUser,
-  getUserStats
+  getUserStats,
+  verifyUser
 } from '../controllers/userController.js';
 
 const router = express.Router();
@@ -21,6 +22,9 @@ router.get('/:id', getUserById);
 
 // POST /api/users - Create new user
 router.post('/', createUser);
+
+// POST /api/users/verify - Verify user credentials
+router.post('/verify', verifyUser);
 
 // PUT /api/users/:id - Update user
 router.put('/:id', updateUser);
