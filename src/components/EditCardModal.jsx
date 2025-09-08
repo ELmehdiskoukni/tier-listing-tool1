@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import { toast } from 'react-toastify'
+import { usersAPI } from '../api/apiClient'
 
-const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
+const EditCardModal = ({ isOpen, onClose, card, onSave, onRefreshData }) => {
   const [cardText, setCardText] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState('Member')
   const [isSaving, setIsSaving] = useState(false)
+  const [userDetails, setUserDetails] = useState(null)
 
   // Card type display configuration
   const cardTypeConfig = {
@@ -23,8 +28,51 @@ const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
   useEffect(() => {
     if (isOpen && card) {
       setCardText(card.text || '')
+      
+      // If this is a persona card, fetch user details
+      if (card.type === 'personas') {
+        fetchUserDetails()
+      } else {
+        // Reset persona fields for non-persona cards
+        setEmail('')
+        setPassword('')
+        setRole('Member')
+        setUserDetails(null)
+      }
     }
   }, [isOpen, card])
+
+  const fetchUserDetails = async () => {
+    if (!card) return
+    
+    let userId = card.userId
+    
+    // If no direct userId, try to find it by matching persona name
+    if (!userId && card.type === 'personas') {
+      try {
+        const usersResponse = await usersAPI.list()
+        const users = usersResponse.data.data || usersResponse.data
+        const matchingUser = users.find(user => user.name === card.text)
+        userId = matchingUser?.userId
+      } catch (error) {
+        console.error('Failed to fetch users for persona lookup:', error)
+      }
+    }
+    
+    if (!userId) return
+    
+    try {
+      const response = await usersAPI.getById(userId)
+      const user = response.data.data || response.data
+      setUserDetails(user)
+      setEmail(user.email || '')
+      setRole(user.role || 'Member')
+      setPassword('') // Always start with empty password for security
+    } catch (error) {
+      console.error('Failed to fetch user details:', error)
+      toast.error('Failed to load persona details')
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -46,12 +94,53 @@ const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
       return
     }
 
+    // Additional validation for persona cards
+    if (card.type === 'personas') {
+      if (!email.trim()) {
+        toast.error('Email is required for personas')
+        return
+      }
+      
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(email)) {
+        toast.error('Please enter a valid email address')
+        return
+      }
+      
+      if (password && password.length < 6) {
+        toast.error('Password must be at least 6 characters long')
+        return
+      }
+    }
+
     setIsSaving(true)
 
     try {
+      // For persona cards, also update user details
+      if (card.type === 'personas' && userDetails) {
+        const updateData = {
+          name: trimmedText,
+          email: email.trim(),
+          role: role
+        }
+        
+        // Only include password if it's provided
+        if (password.trim()) {
+          updateData.password = password
+        }
+        
+        await usersAPI.update(userDetails.userId, updateData)
+        
+        // Refresh data to show updated persona information
+        if (onRefreshData) {
+          await onRefreshData()
+        }
+      }
+      
       await onSave(card, { text: trimmedText })
       onClose()
     } catch (error) {
+      console.error('Failed to save card:', error)
       toast.error('Failed to save card. Please try again.')
     } finally {
       setIsSaving(false)
@@ -61,6 +150,10 @@ const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
   const handleClose = () => {
     if (card) {
       setCardText(card.text || '') // Reset to original text
+      setEmail('')
+      setPassword('')
+      setRole('Member')
+      setUserDetails(null)
     }
     onClose()
   }
@@ -122,6 +215,61 @@ const EditCardModal = ({ isOpen, onClose, card, onSave }) => {
               {cardText.length}/20 characters
             </div>
           </div>
+
+          {/* Persona-specific fields */}
+          {card.type === 'personas' && (
+            <>
+              {/* Email Input */}
+              <div className="mb-6">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter email address"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+
+              {/* Password Input */}
+              <div className="mb-6">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Leave blank to keep current password"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <div className="mt-1 text-xs text-gray-500">
+                  Leave blank to keep the current password. Minimum 6 characters if changing.
+                </div>
+              </div>
+
+              {/* Role Selection */}
+              <div className="mb-6">
+                <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
+                  Role
+                </label>
+                <select
+                  id="role"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="Member">Member</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+            </>
+          )}
 
           {/* Action Buttons */}
           <div className="flex gap-3">

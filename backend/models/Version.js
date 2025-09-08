@@ -61,7 +61,7 @@ export class Version {
     const result = await pool.query(query, [versionId]);
     
     if (result.rows.length === 0) {
-      throw new AppError('Version not found', 404);
+      return null; // Return null instead of throwing error
     }
     
     return result.rows[0];
@@ -254,8 +254,8 @@ export class Version {
           if (tier.cards && Array.isArray(tier.cards)) {
             for (const card of tier.cards) {
               await client.query(
-                'INSERT INTO cards (card_id, text, type, subtype, image_url, hidden, tier_id, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-                [card.id, card.text, card.type, card.subtype, card.imageUrl, card.hidden || false, tier.id, card.position || 0]
+                'INSERT INTO cards (card_id, title, text, type, subtype, image_url, hidden, tier_id, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+                [card.id, card.title || card.text, card.text, card.type, card.subtype, card.imageUrl, card.hidden || false, tier.id, card.position || 0]
               );
               
               // Restore comments for this card

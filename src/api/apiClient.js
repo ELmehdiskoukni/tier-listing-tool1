@@ -3,7 +3,7 @@ import axios from 'axios';
 // Create axios instance with base configuration
 const apiClient = axios.create({
   baseURL: 'http://localhost:4000/api',
-  timeout: 10000,
+  timeout: 30000, // Increased to 30 seconds for large data operations
   headers: {
     'Content-Type': 'application/json',
   },
@@ -208,6 +208,27 @@ export const versionAPI = {
   
   // Restore version
   restoreVersion: (id) => apiClient.post(`/versions/${id}/restore`),
+};
+
+// API functions for Users
+export const usersAPI = {
+  // Get all users
+  list: () => apiClient.get('/users'),
+  
+  // Get user by ID
+  getById: (id) => apiClient.get(`/users/${id}`),
+  
+  // Create new user
+  create: (userData) => apiClient.post('/users', userData),
+  
+  // Update user
+  update: (id, userData) => apiClient.put(`/users/${id}`, userData),
+  
+  // Delete user
+  remove: (id) => apiClient.delete(`/users/${id}`),
+  
+  // Get user stats
+  getStats: () => apiClient.get('/users/stats'),
 };
 
 // Utility function to handle API errors

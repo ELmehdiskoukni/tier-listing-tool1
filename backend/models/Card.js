@@ -7,6 +7,7 @@ export class Card {
     const query = `
       SELECT 
         card_id as id,
+        title,
         text,
         type,
         subtype,
@@ -29,6 +30,7 @@ export class Card {
     const query = `
       SELECT 
         card_id as "id",
+        title,
         text,
         type,
         subtype,
@@ -51,6 +53,7 @@ export class Card {
     const query = `
       SELECT 
         c.card_id as id,
+        c.title,
         c.text,
         c.type,
         c.subtype,
@@ -74,7 +77,7 @@ export class Card {
       FROM cards c
       LEFT JOIN comments cm ON c.card_id = cm.card_id
       WHERE c.tier_id = $1
-      GROUP BY c.card_id, c.text, c.type, c.subtype, c.image_url, c.hidden, c.tier_id, c.position, c.created_at, c.updated_at
+      GROUP BY c.card_id, c.title, c.text, c.type, c.subtype, c.image_url, c.hidden, c.tier_id, c.position, c.created_at, c.updated_at
       ORDER BY c.position ASC
     `;
     
@@ -84,13 +87,14 @@ export class Card {
 
   // Create new card
   static async create(cardData) {
-    const { id, text, type, subtype, imageUrl, hidden = false, tierId, position } = cardData;
+    const { id, title, text, type, subtype, imageUrl, hidden = false, tierId, position } = cardData;
     
     const query = `
-      INSERT INTO cards (card_id, text, type, subtype, image_url, hidden, tier_id, position)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO cards (card_id, title, text, type, subtype, image_url, hidden, tier_id, position)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING 
         card_id as "id",
+        title,
         text,
         type,
         subtype,
@@ -102,7 +106,7 @@ export class Card {
         updated_at
     `;
     
-    const result = await pool.query(query, [id, text, type, subtype, imageUrl, hidden, tierId, position]);
+    const result = await pool.query(query, [id, title, text, type, subtype, imageUrl, hidden, tierId, position]);
     const createdCard = result.rows[0];
     
     return createdCard;
@@ -110,21 +114,23 @@ export class Card {
 
   // Update card
   static async update(cardId, updateData) {
-    const { text, type, subtype, imageUrl, hidden, position } = updateData;
+    const { title, text, type, subtype, imageUrl, hidden, position } = updateData;
     
     const query = `
       UPDATE cards 
       SET 
-        text = COALESCE($2, text),
-        type = COALESCE($3, type),
-        subtype = COALESCE($4, subtype),
-        image_url = COALESCE($5, image_url),
-        hidden = COALESCE($6, hidden),
-        position = COALESCE($7, position),
+        title = COALESCE($2, title),
+        text = COALESCE($3, text),
+        type = COALESCE($4, type),
+        subtype = COALESCE($5, subtype),
+        image_url = COALESCE($6, image_url),
+        hidden = COALESCE($7, hidden),
+        position = COALESCE($8, position),
         updated_at = CURRENT_TIMESTAMP
       WHERE card_id = $1
       RETURNING 
         card_id as id,
+        title,
         text,
         type,
         subtype,
@@ -136,7 +142,7 @@ export class Card {
         updated_at
     `;
     
-    const result = await pool.query(query, [cardId, text, type, subtype, imageUrl, hidden, position]);
+    const result = await pool.query(query, [cardId, title, text, type, subtype, imageUrl, hidden, position]);
     
     if (result.rows.length === 0) {
       throw new AppError('Card not found', 404);

@@ -15,15 +15,18 @@ import ChangeImageModal from './ChangeImageModal'
 import ImportCardsModal from './ImportCardsModal'
 import ExportModal from './ExportModal'
 import PickAnotherPersonaModal from './PickAnotherPersonaModal'
+import AddPersonaModal from './AddPersonaModal'
 import UndoRedoButtons from './UndoRedoButtons'
 import { useTierBoard } from '../hooks/useTierBoard'
-import { tierAPI, sourceCardAPI } from '../api/apiClient'
+import { tierAPI, sourceCardAPI, usersAPI } from '../api/apiClient'
 
 const TierBoard = () => {
   // Use the API hook for data management
   const {
     tiers,
     sourceCards,
+    users,
+    setUsers,
     versionHistory,
     currentVersionIndex,
     loading,
@@ -112,6 +115,10 @@ const TierBoard = () => {
 
   // State for export modal
   const [isExportModalOpen, setIsExportModalOpen] = useState(false)
+  
+  // State for persona modal
+  const [isPersonaModalOpen, setIsPersonaModalOpen] = useState(false)
+  const [selectedPersona, setSelectedPersona] = useState(null)
 
   // State for pick another persona modal
   const [isPickAnotherPersonaModalOpen, setIsPickAnotherPersonaModalOpen] = useState(false)
@@ -307,7 +314,9 @@ const TierBoard = () => {
       console.log('🔍 About to call createCard with tierId:', selectedTierId)
       await createCard({
         ...cardData,
-        tierId: selectedTierId
+        tierId: selectedTierId,
+        title: cardData.title || cardData.text, // Ensure title is set
+        text: cardData.text || cardData.title   // Keep text for backward compatibility
       })
       
       setNextAutosaveDescription(`Added card '${cardData.text}' to tier ${tier?.name || 'tier'}`)
@@ -399,11 +408,21 @@ const TierBoard = () => {
       
       if (isFromSource) {
         // Moving from source area to tier - create new card
-        await createCard({
-          ...cardData,
+        const newCardData = {
           tierId: targetTierId,
-          position: position
-        })
+          position: position,
+          title: cardData.text, // Ensure title is set from text field
+          text: cardData.text,   // Keep text field for backward compatibility
+          type: cardData.type,
+          subtype: cardData.subtype
+        }
+        
+        // For persona cards, include userId but don't use it as the card ID
+        if (cardData.type === 'personas' && cardData.userId) {
+          newCardData.userId = cardData.userId
+        }
+        
+        await createCard(newCardData)
         const targetTier = tiers.find(tier => tier.id === targetTierId)
         setNextAutosaveDescription(`Added card '${cardData.text}' to tier ${targetTier?.name || 'tier'}`)
       } else {
@@ -428,6 +447,68 @@ const TierBoard = () => {
   const handleAddSourceCard = (sourceType) => {
     setSelectedSourceType(sourceType)
     setIsSourceModalOpen(true)
+  }
+
+  // Persona functions
+  const handleAddPersona = () => {
+    setSelectedPersona(null)
+    setIsPersonaModalOpen(true)
+  }
+
+  const handleEditPersona = (persona) => {
+    setSelectedPersona(persona)
+    setIsPersonaModalOpen(true)
+  }
+
+  const handleSavePersona = async (personaData) => {
+    try {
+      if (personaData.userId) {
+        // Update existing persona
+        await usersAPI.update(personaData.userId, personaData)
+        
+        // Update users state immediately
+        setUsers(prev => prev.map(user => 
+          user.userId === personaData.userId 
+            ? { ...user, name: personaData.name, email: personaData.email, role: personaData.role }
+            : user
+        ))
+        
+        setNextAutosaveDescription(`Updated persona '${personaData.name}'`)
+      } else {
+        // Create new persona with optimistic update
+        const response = await usersAPI.create(personaData)
+        const newUser = response.data.data || response.data
+        
+        // Add new user to users state immediately
+        setUsers(prev => [...prev, newUser])
+        
+        // Create the actual source card in the background
+        try {
+          await createSourceCard({
+            text: newUser.name,
+            type: 'personas',
+            subtype: 'text',
+            sourceCategory: 'personas',
+            userId: newUser.userId
+          })
+        } catch (sourceCardError) {
+          console.error('Failed to create source card:', sourceCardError)
+          // Remove the optimistic update if source card creation failed
+          setUsers(prev => prev.filter(user => user.userId !== newUser.userId))
+          throw sourceCardError
+        }
+        
+        setNextAutosaveDescription(`Created persona '${personaData.name}'`)
+        
+        // Sync with server in background (non-blocking)
+        refreshData().catch(error => {
+          console.warn('Background sync failed:', error)
+        })
+      }
+    } catch (error) {
+      console.error('Failed to save persona:', error)
+      throw error // Re-throw to let the modal handle the error
+    }
   }
 
   const handleCreateSourceCard = async (cardData) => {
@@ -1068,6 +1149,7 @@ const TierBoard = () => {
       <SourceArea 
         sourceCards={sourceCards}
         onAddSourceCard={handleAddSourceCard}
+        onAddPersona={handleAddPersona}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         draggedCard={draggedCard}
@@ -1270,6 +1352,7 @@ const TierBoard = () => {
         }}
         card={selectedCardForOperation}
         onSave={handleSaveEditedCard}
+        onRefreshData={refreshData}
       />
 
       {/* Add Comment Modal */}
@@ -1317,6 +1400,17 @@ const TierBoard = () => {
         onClose={closeSourceModal}
         onCreateCard={handleCreateSourceCard}
         sourceType={selectedSourceType}
+      />
+
+      {/* Persona Modal */}
+      <AddPersonaModal
+        isOpen={isPersonaModalOpen}
+        onClose={() => {
+          setIsPersonaModalOpen(false)
+          setSelectedPersona(null)
+        }}
+        onSave={handleSavePersona}
+        persona={selectedPersona}
       />
 
       {/* Card Creation Modal (for tier cards) */}

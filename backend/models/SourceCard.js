@@ -169,20 +169,29 @@ export class SourceCard {
     try {
       await client.query('BEGIN');
       
+      // First check if the source card exists
+      const checkResult = await client.query(
+        'SELECT card_id, text, type FROM source_cards WHERE card_id = $1',
+        [cardId]
+      );
+      
+      if (checkResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null; // Return null instead of throwing error
+      }
+      
+      const sourceCard = checkResult.rows[0];
+      
       // Delete the source card
       const deleteResult = await client.query(
         'DELETE FROM source_cards WHERE card_id = $1 RETURNING card_id',
         [cardId]
       );
       
-      if (deleteResult.rows.length === 0) {
-        throw new AppError('Source card not found', 404);
-      }
-      
       // Cascade delete: remove all tier cards that reference this source item
       const cascadeResult = await client.query(
-        'DELETE FROM cards WHERE text = (SELECT text FROM source_cards WHERE card_id = $1) AND type = (SELECT type FROM source_cards WHERE card_id = $1) RETURNING card_id',
-        [cardId]
+        'DELETE FROM cards WHERE text = $1 AND type = $2 RETURNING card_id',
+        [sourceCard.text, sourceCard.type]
       );
       
       await client.query('COMMIT');

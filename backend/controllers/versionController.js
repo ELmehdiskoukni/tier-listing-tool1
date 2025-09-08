@@ -68,12 +68,33 @@ export const createVersion = asyncHandler(async (req, res) => {
 export const deleteVersion = asyncHandler(async (req, res) => {
   const { id } = req.params;
   
-  await Version.delete(id);
-  
-  res.json({
-    success: true,
-    message: 'Version deleted successfully'
-  });
+  try {
+    const result = await Version.delete(id);
+    
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: 'Version not found',
+        message: 'Version not found or already deleted'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Version deleted successfully'
+    });
+  } catch (error) {
+    if (error.message && error.message.includes('not found')) {
+      return res.status(404).json({
+        success: false,
+        error: 'Version not found',
+        message: 'Version not found or already deleted'
+      });
+    }
+    
+    // Re-throw other errors to be handled by asyncHandler
+    throw error;
+  }
 });
 
 // Restore to version

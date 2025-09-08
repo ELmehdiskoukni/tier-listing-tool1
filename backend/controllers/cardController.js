@@ -66,7 +66,7 @@ export const getCardsByTierId = asyncHandler(async (req, res) => {
 
 // Create new card
 export const createCard = asyncHandler(async (req, res) => {
-  const { text, type, subtype, imageUrl, hidden, tierId, position } = req.body;
+  const { title, text, type, subtype, imageUrl, hidden, tierId, position } = req.body;
   
   // Check if tier exists
   const tier = await Tier.getById(tierId);
@@ -85,7 +85,8 @@ export const createCard = asyncHandler(async (req, res) => {
   
   const cardData = {
     id,
-    text,
+    title: title || text, // Use title if provided, fallback to text
+    text: text || title,   // Keep text for backward compatibility
     type,
     subtype,
     imageUrl,

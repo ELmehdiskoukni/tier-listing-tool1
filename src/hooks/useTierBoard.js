@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { tierAPI, sourceCardAPI, cardAPI, commentAPI, versionAPI, handleAPIError } from '../api/apiClient';
+import { tierAPI, sourceCardAPI, cardAPI, commentAPI, versionAPI, usersAPI, handleAPIError } from '../api/apiClient';
 import { useUndoRedo, ACTION_TYPES } from './useUndoRedo';
 
 export const useTierBoard = () => {
   // State for data
   const [tiers, setTiers] = useState([]);
+  const [users, setUsers] = useState([]);
   const [sourceCards, setSourceCards] = useState({
     competitors: [],
     pages: [],
@@ -17,6 +18,7 @@ export const useTierBoard = () => {
   const [loading, setLoading] = useState({
     tiers: false,
     sourceCards: false,
+    users: false,
     versions: false
   });
   const [error, setError] = useState(null);
@@ -80,7 +82,10 @@ export const useTierBoard = () => {
           try {
             await versionAPI.deleteVersion(version.id);
           } catch (deleteErr) {
-            console.warn('Failed to delete future version:', version.id, deleteErr);
+            // Silently handle 404 errors - version may already be deleted
+            if (deleteErr.response?.status !== 404) {
+              console.warn('Failed to delete future version:', version.id, deleteErr);
+            }
           }
         }
         // Update local version history to remove deleted versions
@@ -188,6 +193,25 @@ export const useTierBoard = () => {
     loadInitialData();
   }, [loadSuppressedFromStorage]);
 
+  // Update sourceCards.personas when users state changes
+  useEffect(() => {
+    const personasFromUsers = users.map(user => ({
+      id: `persona-card-${user.userId}`, // Use a proper card ID format
+      text: user.name,
+      type: 'personas',
+      subtype: 'text',
+      sourceCategory: 'personas',
+      userId: user.userId, // Keep userId for user operations
+      email: user.email,
+      role: user.role
+    }));
+    
+    setSourceCards(prev => ({
+      ...prev,
+      personas: personasFromUsers
+    }));
+  }, [users]);
+
   // Sanitize tier data to ensure proper structure
   const sanitizeTierData = (tiers) => {
     if (!Array.isArray(tiers)) {
@@ -216,6 +240,23 @@ export const useTierBoard = () => {
       return sanitizedTier;
     }).filter(tier => tier !== null); // Remove any null tiers
   };
+
+  // Helper function to detect if a card is a persona/user card
+  const isPersonaCard = useCallback((card) => {
+    return card && (card.type === 'personas' || card.sourceCategory === 'personas');
+  }, []);
+
+  // Helper function to find user ID from persona card
+  const findUserIdFromCard = useCallback((card) => {
+    if (!isPersonaCard(card)) return null;
+    
+    // Check if card has userId directly
+    if (card.userId) return card.userId;
+    
+    // Find matching source card to get userId
+    const sourceCard = sourceCards.personas?.find(sc => sc.text === card.text);
+    return sourceCard?.userId || null;
+  }, [sourceCards.personas]);
 
   // Helper function to create action objects for undo/redo
   const createAction = useCallback((type, description, previousState, newState, meta = null) => {
@@ -460,6 +501,40 @@ const duplicateTier = async (id) => {
   }
 };
 
+  // Load versions asynchronously to avoid blocking main UI
+  const loadVersionsAsync = async () => {
+    try {
+      const versionsResponse = await versionAPI.getAllVersions();
+      const versions = versionsResponse.data.data || versionsResponse.data;
+      console.log('[VersionLoad] Raw versions from API:', versions)
+      
+      // Ensure versions are sorted by creation time (newest first)
+      const sortedVersions = versions
+        .map(v => {
+          // Normalize to ISO UTC string consistently
+          let createdAtIso = v.created_at
+          if (createdAtIso instanceof Date) createdAtIso = createdAtIso.toISOString()
+          if (typeof createdAtIso === 'string' && /\d{4}-\d{2}-\d{2}T/.test(createdAtIso) && !/Z|[+-]\d{2}:?\d{2}$/.test(createdAtIso)) {
+            createdAtIso = `${createdAtIso}Z`
+          }
+          return { ...v, created_at: createdAtIso }
+        })
+        .sort((a, b) => new Date(a.created_at) < new Date(b.created_at) ? 1 : -1);
+      
+      console.log('[VersionLoad] Sorted versions:', sortedVersions.map(v => ({ id: v.id, created_at: v.created_at })))
+      setVersionHistory(sortedVersions);
+      
+      // Update current version index after versions are loaded
+      updateCurrentVersionIndex(sortedVersions, tiers, sourceCards);
+      
+      setLoading(prev => ({ ...prev, versions: false }));
+    } catch (err) {
+      console.warn('Failed to load versions (non-blocking):', err);
+      setVersionHistory([]);
+      setLoading(prev => ({ ...prev, versions: false }));
+    }
+  };
+
   const loadInitialData = async () => {
     console.log('🔍 loadInitialData called')
     try {
@@ -520,36 +595,38 @@ const duplicateTier = async (id) => {
         setTiersFiltered(sanitizedUpdatedTiers);
       }
       
+      // Load users
+      setLoading(prev => ({ ...prev, users: true }));
+      const usersResponse = await usersAPI.list();
+      const loadedUsers = usersResponse.data.data || usersResponse.data;
+      setUsers(loadedUsers || []);
+      
       // Load source cards grouped
       setLoading(prev => ({ ...prev, sourceCards: true }));
       const sourceCardsResponse = await sourceCardAPI.getAllSourceCardsGrouped();
       const loadedSourceCards = sourceCardsResponse.data.data || sourceCardsResponse.data;
+      
+      // Map users to personas for display
+      const personasFromUsers = loadedUsers.map(user => ({
+        id: `persona-card-${user.userId}`, // Use a proper card ID format
+        text: user.name,
+        type: 'personas',
+        subtype: 'text',
+        sourceCategory: 'personas',
+        userId: user.userId, // Keep userId for user operations
+        email: user.email,
+        role: user.role
+      }));
+      
       setSourceCards({
         competitors: loadedSourceCards.competitors || [],
         pages: loadedSourceCards.pages || [],
-        personas: loadedSourceCards.personas || []
+        personas: personasFromUsers
       });
       
-      // Load versions
+      // Load versions asynchronously to avoid blocking initial data load
       setLoading(prev => ({ ...prev, versions: true }));
-      const versionsResponse = await versionAPI.getAllVersions();
-      const versions = versionsResponse.data.data || versionsResponse.data;
-      // Debug raw versions
-      console.log('[VersionLoad] Raw versions from API:', versions)
-      // Ensure versions are sorted by creation time (newest first)
-      const sortedVersions = versions
-        .map(v => {
-          // Normalize to ISO UTC string consistently
-          let createdAtIso = v.created_at
-          if (createdAtIso instanceof Date) createdAtIso = createdAtIso.toISOString()
-          if (typeof createdAtIso === 'string' && /\d{4}-\d{2}-\d{2}T/.test(createdAtIso) && !/Z|[+-]\d{2}:?\d{2}$/.test(createdAtIso)) {
-            createdAtIso = `${createdAtIso}Z`
-          }
-          return { ...v, created_at: createdAtIso }
-        })
-        .sort((a, b) => new Date(a.created_at) < new Date(b.created_at) ? 1 : -1);
-      console.log('[VersionLoad] Sorted versions:', sortedVersions.map(v => ({ id: v.id, created_at: v.created_at })))
-      setVersionHistory(sortedVersions);
+      loadVersionsAsync();
       
       // Update current version index based on actual board state
       // Use the loaded data instead of the old state
@@ -559,8 +636,9 @@ const duplicateTier = async (id) => {
         pages: loadedSourceCards.pages || [],
         personas: loadedSourceCards.personas || []
       };
-      // Use the sorted list to keep indices aligned with UI
-      updateCurrentVersionIndex(sortedVersions, finalTiers, finalSourceCards);
+      // Initialize current version index with empty version history
+      // Version history will be loaded asynchronously and update the index later
+      setCurrentVersionIndex(0);
       
     } catch (err) {
       const errorMessage = handleAPIError(err, 'Failed to load initial data');
@@ -570,6 +648,7 @@ const duplicateTier = async (id) => {
       setLoading(prev => ({ 
         tiers: false, 
         sourceCards: false, 
+        users: false,
         versions: false 
       }));
     }
@@ -974,6 +1053,31 @@ const duplicateTier = async (id) => {
   const updateSourceCard = async (id, cardData) => {
     try {
       console.log('🔍 updateSourceCard called with id:', id, 'cardData:', cardData)
+      
+      // Check if this is a persona card (has persona-card- prefix)
+      if (id.startsWith('persona-card-')) {
+        // Extract user ID from the card ID
+        const userId = id.replace('persona-card-', '');
+        
+        // Update the user instead of source card
+        const response = await usersAPI.update(userId, {
+          name: cardData.text,
+          email: cardData.email,
+          role: cardData.role
+        });
+        
+        const updatedUser = response.data.data || response.data;
+        console.log('🔍 Persona user updated:', updatedUser);
+        
+        // Update users state
+        setUsers(prev => prev.map(user => 
+          user.userId === userId ? { ...user, ...updatedUser } : user
+        ));
+        
+        return updatedUser;
+      }
+      
+      // Regular source card update
       // Capture previous state for potential UI messaging (no local mutation yet)
       const prevSourceCards = {
         competitors: sourceCards.competitors || [],
@@ -1106,6 +1210,22 @@ const duplicateTier = async (id) => {
   const deleteSourceCard = async (id, sourceCategory) => {
     try {
       console.log('🔍 deleteSourceCard called with id:', id, 'sourceCategory:', sourceCategory)
+      
+      // Check if this is a persona card (has persona-card- prefix)
+      if (id.startsWith('persona-card-')) {
+        // Extract user ID from the card ID
+        const userId = id.replace('persona-card-', '');
+        
+        // Delete the user instead of source card
+        await usersAPI.remove(userId);
+        
+        // Remove from users state
+        setUsers(prev => prev.filter(user => user.userId !== userId));
+        
+        console.log('🔍 Deleted persona user:', userId);
+        return;
+      }
+      
       // Get previous card for messaging
       const prev = sourceCards[sourceCategory]?.find(c => c.id === id);
       await sourceCardAPI.deleteSourceCard(id);
@@ -1117,11 +1237,11 @@ const duplicateTier = async (id) => {
       const updatedSourceCards = sourceCardsResponse.data.data || sourceCardsResponse.data;
       console.log('🔍 Reloaded source cards from API:', updatedSourceCards)
       
-      setSourceCards({
+      setSourceCards(prev => ({
         competitors: updatedSourceCards.competitors || [],
         pages: updatedSourceCards.pages || [],
-        personas: updatedSourceCards.personas || []
-      });
+        personas: prev.personas // Keep personas from users state
+      }));
       
       // Also remove from tiers (cascade delete)
       setTiers(prev => prev.map(tier => ({
@@ -1141,7 +1261,7 @@ const duplicateTier = async (id) => {
           sourceCardsData: JSON.parse(JSON.stringify({
             competitors: updatedSourceCards.competitors || [],
             pages: updatedSourceCards.pages || [],
-            personas: updatedSourceCards.personas || []
+            personas: sourceCards.personas || []
           }))
         });
       } catch (e) {
@@ -1224,6 +1344,23 @@ const duplicateTier = async (id) => {
       const prevCard = (tiers.flatMap(t => t.cards || [])).find(c => c.id === id);
       const prevName = prevCard?.text;
       const prevImage = prevCard?.imageUrl || null;
+      
+      // Check if this is a persona card and handle user update
+      if (isPersonaCard(prevCard)) {
+        const userId = findUserIdFromCard(prevCard);
+        if (userId && cardData.text && cardData.text !== prevName) {
+          // Update the user name in the users table
+          await usersAPI.update(userId, { name: cardData.text });
+          
+          // Update users state immediately
+          setUsers(prev => prev.map(user => 
+            user.userId === userId ? { ...user, name: cardData.text } : user
+          ));
+          
+          console.log('🔍 Updated user name for persona card:', userId, cardData.text);
+        }
+      }
+      
       const response = await cardAPI.updateCard(id, cardData);
       const updatedCard = response.data.data || response.data;
       
@@ -1240,8 +1377,17 @@ const duplicateTier = async (id) => {
       
       setTiersFiltered(updatedTiers);
       
-      // Update in source cards if it's a source card
-      if (cardData.sourceCategory) {
+      // For persona cards, also reload source cards to reflect user name changes
+      if (isPersonaCard(prevCard)) {
+        const sourceCardsResponse = await sourceCardAPI.getAllSourceCardsGrouped();
+        const reloadedSourceCards = sourceCardsResponse.data.data || sourceCardsResponse.data;
+        setSourceCards({
+          competitors: reloadedSourceCards.competitors || [],
+          pages: reloadedSourceCards.pages || [],
+          personas: reloadedSourceCards.personas || []
+        });
+      } else if (cardData.sourceCategory) {
+        // Update in source cards if it's a source card (non-persona)
         setSourceCards(prev => ({
           ...prev,
           [cardData.sourceCategory]: (prev[cardData.sourceCategory] || []).map(card =>
@@ -1302,7 +1448,26 @@ const duplicateTier = async (id) => {
       const cardToDelete = tiers.flatMap(t => t.cards || []).find(c => c.id === id);
       const tierName = tiers.find(t => t.cards?.some(c => c.id === id))?.name || 'tier';
       
-      await cardAPI.deleteCard(id);
+      // Check if this is a persona card and handle user deletion
+      if (isPersonaCard(cardToDelete)) {
+        const userId = findUserIdFromCard(cardToDelete);
+        if (userId) {
+          // Delete the user from the users table
+          await usersAPI.remove(userId);
+          
+          // Remove user from users state immediately
+          setUsers(prev => prev.filter(user => user.userId !== userId));
+          
+          console.log('🔍 Deleted user for persona card:', userId);
+        }
+        
+        // For persona cards, only delete the card from tiers, not from source cards
+        // since personas are managed through users state
+        await cardAPI.deleteCard(id);
+      } else {
+        // For non-persona cards, delete normally
+        await cardAPI.deleteCard(id);
+      }
       
       console.log('🔍 Card deleted, about to reload tiers from API...')
       
@@ -1316,12 +1481,15 @@ const duplicateTier = async (id) => {
       
       setTiersFiltered(updatedTiers);
       
-      // Remove from source cards
-      setSourceCards(prev => ({
-        competitors: (prev.competitors || []).filter(card => card.id !== id),
-        pages: (prev.pages || []).filter(card => card.id !== id),
-        personas: (prev.personas || []).filter(card => card.id !== id)
-      }));
+      // For non-persona cards, remove from source cards
+      if (!isPersonaCard(cardToDelete)) {
+        setSourceCards(prev => ({
+          competitors: (prev.competitors || []).filter(card => card.id !== id),
+          pages: (prev.pages || []).filter(card => card.id !== id),
+          personas: prev.personas // Personas are managed by users state
+        }));
+      }
+      // Persona cards are automatically updated via users state useEffect
       
       // Track action for undo/redo (only if not during undo/redo operation)
       if (!isPerformingAction) {
@@ -1696,6 +1864,7 @@ const duplicateTier = async (id) => {
     }
   };
 
+
   // Version operations section - createVersion moved earlier to fix hoisting
 
   const deleteVersion = async (id) => {
@@ -1716,7 +1885,7 @@ const duplicateTier = async (id) => {
 
   const restoreVersion = async (id) => {
     try {
-      // Suppress autosave once after restoring to avoid immediately saving the restored snapshot
+      // Suppress multiple autosaves during restore process
       suppressNextAutosaveRef.current = true;
       const response = await versionAPI.restoreVersion(id);
       const restoredVersion = response.data.data || response.data;
@@ -1726,6 +1895,9 @@ const duplicateTier = async (id) => {
       if (versionIndex !== -1) {
         setCurrentVersionIndex(versionIndex);
       }
+      
+      // Suppress autosave for the next data reload as well
+      suppressNextAutosaveRef.current = true;
       
       // The backend restores data to the database but returns the version object
       // We need to reload the data to get the restored state
@@ -1902,6 +2074,8 @@ const duplicateTier = async (id) => {
   const clearError = () => setError(null);
 
   const refreshData = async () => {
+    // Suppress autosave during data refresh to prevent duplicate versions
+    suppressNextAutosaveRef.current = true;
     await loadInitialData();
   };
 
@@ -2143,6 +2317,8 @@ const duplicateTier = async (id) => {
     // Data
     tiers,
     sourceCards,
+    users,
+    setUsers,
     versionHistory,
     currentVersionIndex,
     toast,

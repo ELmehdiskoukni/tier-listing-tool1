@@ -4,6 +4,7 @@ import Card from './Card'
 const SourceArea = ({ 
   sourceCards, 
   onAddSourceCard, 
+  onAddPersona, // New prop for persona creation
   onDragStart, 
   onDragEnd, 
   draggedCard,
@@ -64,9 +65,9 @@ const SourceArea = ({
                 
                 {/* Add Card Button */}
                 <button
-                  onClick={() => onAddSourceCard(row.id)}
+                  onClick={() => row.id === 'personas' ? onAddPersona() : onAddSourceCard(row.id)}
                   className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-dashed border-gray-300 hover:border-gray-400 rounded-md transition-colors duration-200"
-                  title={`Add new ${row.label.toLowerCase()} card`}
+                  title={`Add new ${row.label.toLowerCase()} ${row.id === 'personas' ? 'with user details' : 'card'}`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

@@ -141,13 +141,35 @@ export const updateSourceCard = asyncHandler(async (req, res) => {
 export const deleteSourceCard = asyncHandler(async (req, res) => {
   const { id } = req.params;
   
-  const result = await SourceCard.delete(id);
-  
-  res.json({
-    success: true,
-    message: 'Source card deleted successfully',
-    data: result
-  });
+  try {
+    const result = await SourceCard.delete(id);
+    
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: 'Source card not found or already deleted',
+        error: 'CARD_NOT_FOUND'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Source card deleted successfully',
+      data: result
+    });
+  } catch (error) {
+    // Handle specific database errors
+    if (error.message && error.message.includes('not found')) {
+      return res.status(404).json({
+        success: false,
+        message: 'Source card not found',
+        error: 'CARD_NOT_FOUND'
+      });
+    }
+    
+    // Re-throw other errors to be handled by asyncHandler
+    throw error;
+  }
 });
 
 // Duplicate source card
