@@ -21,14 +21,15 @@ import {
 } from '../controllers/sourceCardController.js';
 import { toggleSourceInstancesHidden } from '../controllers/sourceCardController.js';
 import { validateSourceCard, validateSourceCardUpdate, validateId, validateBulkOperation, validateComment, validateCommentId } from '../middleware/validation.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // GET /api/source-cards - Get all source cards
-router.get('/', getAllSourceCards);
+router.get('/', authenticateToken, getAllSourceCards);
 
 // GET /api/source-cards/grouped - Get all source cards grouped by category
-router.get('/grouped', getAllSourceCardsGrouped);
+router.get('/grouped', authenticateToken, getAllSourceCardsGrouped);
 
 // GET /api/source-cards/stats - Get source card statistics
 router.get('/stats', getSourceCardStats);
@@ -37,7 +38,7 @@ router.get('/stats', getSourceCardStats);
 router.get('/search', searchSourceCards);
 
 // GET /api/source-cards/category/:category - Get source cards by category
-router.get('/category/:category', getSourceCardsByCategory);
+router.get('/category/:category', authenticateToken, getSourceCardsByCategory);
 
 // GET /api/source-cards/:id - Get source card by ID
 router.get('/:id', validateId, getSourceCardById);

@@ -1315,18 +1315,9 @@ const duplicateTier = async (id) => {
         ));
       }
       
-      // Version history: Added card
-      try {
-        const targetTier = updatedTiers.find(t => t.id === cardData.tierId);
-        const description = `Added card '${newCard.text || 'Card'}' to tier ${targetTier?.name || 'tier'}`;
-        await createVersion({
-          description,
-          tiersData: JSON.parse(JSON.stringify(updatedTiers)),
-          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
-        });
-      } catch (e) {
-        console.warn('Failed to create version for createCard:', e);
-      }
+      // Set next autosave description instead of creating version immediately
+      const targetTier = updatedTiers.find(t => t.id === cardData.tierId);
+      setNextAutosaveDescription(`Added card '${newCard.text || 'Card'}' to tier ${targetTier?.name || 'tier'}`)
       
       console.log('🔍 setTiers called with reloaded data, returning newCard')
       return newCard;
@@ -1560,20 +1551,11 @@ const duplicateTier = async (id) => {
         ));
       }
       
-      // Version history: Moved card between tiers
-      try {
-        const card = updatedTiers.flatMap(t => t.cards || []).find(c => c.id === id);
-        const targetTier = updatedTiers.find(t => t.id === moveData.targetTierId);
-        const sourceTierPrev = previousState.tiers.find(t => (t.cards || []).some(c => c.id === id));
-        const description = `Moved card '${card?.text || 'Card'}' from ${sourceTierPrev?.name || 'tier'} to ${targetTier?.name || 'tier'}`;
-        await createVersion({
-          description,
-          tiersData: JSON.parse(JSON.stringify(updatedTiers)),
-          sourceCardsData: JSON.parse(JSON.stringify(sourceCards))
-        });
-      } catch (e) {
-        console.warn('Failed to create version for moveCard:', e);
-      }
+      // Set next autosave description instead of creating version immediately
+      const card = updatedTiers.flatMap(t => t.cards || []).find(c => c.id === id);
+      const targetTier = updatedTiers.find(t => t.id === moveData.targetTierId);
+      const sourceTierPrev = previousState.tiers.find(t => (t.cards || []).some(c => c.id === id));
+      setNextAutosaveDescription(`Moved card '${card?.text || 'Card'}' from ${sourceTierPrev?.name || 'tier'} to ${targetTier?.name || 'tier'}`)
       
       return updatedTiers;
     } catch (err) {

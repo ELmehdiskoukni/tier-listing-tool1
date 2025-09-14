@@ -77,10 +77,31 @@ const createTables = async () => {
         hidden BOOLEAN DEFAULT FALSE,
         tier_id VARCHAR(255) NOT NULL,
         position INTEGER NOT NULL,
+        assignee_id VARCHAR(255),
+        due_date DATE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (tier_id) REFERENCES tiers(tier_id) ON DELETE CASCADE
+        FOREIGN KEY (tier_id) REFERENCES tiers(tier_id) ON DELETE CASCADE,
+        FOREIGN KEY (assignee_id) REFERENCES users(user_id) ON DELETE SET NULL
       )
+    `);
+
+    // Add new columns to existing cards table if they don't exist
+    await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS assignee_id VARCHAR(255)`);
+    await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS due_date DATE`);
+    
+    // Add foreign key constraint for assignee_id if it doesn't exist
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints 
+          WHERE constraint_name = 'cards_assignee_id_fkey'
+        ) THEN
+          ALTER TABLE cards ADD CONSTRAINT cards_assignee_id_fkey 
+          FOREIGN KEY (assignee_id) REFERENCES users(user_id) ON DELETE SET NULL;
+        END IF;
+      END $$;
     `);
 
     // Create comments table

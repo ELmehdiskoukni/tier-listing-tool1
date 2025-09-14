@@ -1,10 +1,32 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { toast } from 'react-toastify'
+import { usersAPI } from '../api/apiClient'
 
 const CardCreationModal = ({ isOpen, onClose, onCreateCard, tierName }) => {
   const [selectedType, setSelectedType] = useState('')
   const [cardText, setCardText] = useState('')
+  const [assigneeId, setAssigneeId] = useState('')
+  const [dueDate, setDueDate] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const [users, setUsers] = useState([])
+
+  // Fetch users for assignee dropdown
+  useEffect(() => {
+    if (isOpen) {
+      fetchUsers()
+    }
+  }, [isOpen])
+
+  const fetchUsers = async () => {
+    try {
+      const response = await usersAPI.list()
+      const usersData = response.data.data || response.data
+      setUsers(usersData)
+    } catch (error) {
+      console.error('Failed to fetch users:', error)
+      toast.error('Failed to load users for assignment')
+    }
+  }
 
   // Available card types with color indicators - NO ICONS
   const cardTypes = [
@@ -36,13 +58,20 @@ const CardCreationModal = ({ isOpen, onClose, onCreateCard, tierName }) => {
     setIsCreating(true)
 
     try {
-      await onCreateCard({
+      const cardData = {
         text: cardText.trim(),
         type: selectedType
-      })
+      }
+      
+      if (assigneeId) cardData.assigneeId = assigneeId
+      if (dueDate) cardData.dueDate = dueDate
+      
+      await onCreateCard(cardData)
       
       setCardText('')
       setSelectedType('')
+      setAssigneeId('')
+      setDueDate('')
       onClose()
     } catch (error) {
       toast.error('Failed to create card. Please try again.')
@@ -54,6 +83,8 @@ const CardCreationModal = ({ isOpen, onClose, onCreateCard, tierName }) => {
   const handleClose = () => {
     setCardText('')
     setSelectedType('')
+    setAssigneeId('')
+    setDueDate('')
     onClose()
   }
 
@@ -122,6 +153,43 @@ const CardCreationModal = ({ isOpen, onClose, onCreateCard, tierName }) => {
               {cardText.length}/20 characters
             </div>
           </div>
+
+          {/* Task Assignment Fields - Hidden for personas */}
+          {selectedType !== 'personas' && (
+            <>
+              <div className="mb-6">
+                <label htmlFor="assignee" className="block text-sm font-medium text-gray-700 mb-2">
+                  Assign to
+                </label>
+                <select
+                  id="assignee"
+                  value={assigneeId}
+                  onChange={(e) => setAssigneeId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Unassigned</option>
+                  {users.map((user) => (
+                    <option key={user.userId} value={user.userId}>
+                      {user.name} ({user.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mb-6">
+                <label htmlFor="dueDate" className="block text-sm font-medium text-gray-700 mb-2">
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  id="dueDate"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </>
+          )}
 
           <div className="flex gap-3">
             <button

@@ -8,7 +8,10 @@ const SourceArea = ({
   onDragStart, 
   onDragEnd, 
   draggedCard,
-  onCardRightClick // Make sure this prop is here
+  onCardRightClick, // Make sure this prop is here
+  users = [], // Users data for assignee display
+  currentUserId = null,
+  userRole = null
 }) => {
   const sourceRows = [
     {
@@ -60,20 +63,25 @@ const SourceArea = ({
                     onDragEnd={onDragEnd}
                     isDragging={draggedCard?.id === card.id}
                     onRightClick={onCardRightClick}
+                    users={users}
+                    currentUserId={currentUserId}
+                    userRole={userRole}
                   />
                 ))}
                 
-                {/* Add Card Button */}
-                <button
-                  onClick={() => row.id === 'personas' ? onAddPersona() : onAddSourceCard(row.id)}
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-dashed border-gray-300 hover:border-gray-400 rounded-md transition-colors duration-200"
-                  title={`Add new ${row.label.toLowerCase()} ${row.id === 'personas' ? 'with user details' : 'card'}`}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span>{row.addLabel}</span>
-                </button>
+                {/* Add Card Button - only show for admin users */}
+                {userRole !== 'Member' && (
+                  <button
+                    onClick={() => row.id === 'personas' ? onAddPersona() : onAddSourceCard(row.id)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-dashed border-gray-300 hover:border-gray-400 rounded-md transition-colors duration-200"
+                    title={`Add new ${row.label.toLowerCase()} ${row.id === 'personas' ? 'with user details' : 'card'}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    {row.addLabel}
+                  </button>
+                )}
               </div>
             </div>
           </div>

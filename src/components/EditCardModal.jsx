@@ -7,8 +7,11 @@ const EditCardModal = ({ isOpen, onClose, card, onSave, onRefreshData }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('Member')
+  const [assigneeId, setAssigneeId] = useState('')
+  const [dueDate, setDueDate] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [userDetails, setUserDetails] = useState(null)
+  const [users, setUsers] = useState([])
 
   // Card type display configuration
   const cardTypeConfig = {
@@ -28,6 +31,8 @@ const EditCardModal = ({ isOpen, onClose, card, onSave, onRefreshData }) => {
   useEffect(() => {
     if (isOpen && card) {
       setCardText(card.text || '')
+      setAssigneeId(card.assigneeId || '')
+      setDueDate(card.dueDate || '')
       
       // If this is a persona card, fetch user details
       if (card.type === 'personas') {
@@ -41,6 +46,24 @@ const EditCardModal = ({ isOpen, onClose, card, onSave, onRefreshData }) => {
       }
     }
   }, [isOpen, card])
+
+  // Fetch users for assignee dropdown
+  useEffect(() => {
+    if (isOpen) {
+      fetchUsers()
+    }
+  }, [isOpen])
+
+  const fetchUsers = async () => {
+    try {
+      const response = await usersAPI.list()
+      const usersData = response.data.data || response.data
+      setUsers(usersData)
+    } catch (error) {
+      console.error('Failed to fetch users:', error)
+      toast.error('Failed to load users for assignment')
+    }
+  }
 
   const fetchUserDetails = async () => {
     if (!card) return
@@ -137,7 +160,11 @@ const EditCardModal = ({ isOpen, onClose, card, onSave, onRefreshData }) => {
         }
       }
       
-      await onSave(card, { text: trimmedText })
+      const updateData = { text: trimmedText }
+      if (assigneeId) updateData.assigneeId = assigneeId
+      if (dueDate) updateData.dueDate = dueDate
+      
+      await onSave(card, updateData)
       onClose()
     } catch (error) {
       console.error('Failed to save card:', error)
@@ -150,6 +177,8 @@ const EditCardModal = ({ isOpen, onClose, card, onSave, onRefreshData }) => {
   const handleClose = () => {
     if (card) {
       setCardText(card.text || '') // Reset to original text
+      setAssigneeId(card.assigneeId || '')
+      setDueDate(card.dueDate || '')
       setEmail('')
       setPassword('')
       setRole('Member')
@@ -215,6 +244,43 @@ const EditCardModal = ({ isOpen, onClose, card, onSave, onRefreshData }) => {
               {cardText.length}/20 characters
             </div>
           </div>
+
+          {/* Task Assignment Fields - Hidden for personas */}
+          {card.type !== 'personas' && (
+            <>
+              <div className="mb-6">
+                <label htmlFor="assignee" className="block text-sm font-medium text-gray-700 mb-2">
+                  Assign to
+                </label>
+                <select
+                  id="assignee"
+                  value={assigneeId}
+                  onChange={(e) => setAssigneeId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Unassigned</option>
+                  {users.map((user) => (
+                    <option key={user.userId} value={user.userId}>
+                      {user.name} ({user.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mb-6">
+                <label htmlFor="dueDate" className="block text-sm font-medium text-gray-700 mb-2">
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  id="dueDate"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </>
+          )}
 
           {/* Persona-specific fields */}
           {card.type === 'personas' && (

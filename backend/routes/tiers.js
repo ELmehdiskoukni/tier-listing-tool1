@@ -13,6 +13,7 @@ import {
   clearTierCards
 } from '../controllers/tierController.js';
 import { validateTier, validateTierUpdate, validateId, validateTierMovement } from '../middleware/validation.js';
+import { authenticateToken, requireMemberOrAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -20,16 +21,16 @@ const router = express.Router();
 router.get('/', getAllTiers);
 
 // GET /api/tiers/with-cards - Get all tiers with cards
-router.get('/with-cards', getAllTiersWithCards);
+router.get('/with-cards', authenticateToken, getAllTiersWithCards);
 
 // GET /api/tiers/stats - Get tier statistics
 router.get('/stats', getTierStats);
 
 // GET /api/tiers/:id - Get tier by ID
-router.get('/:id', validateId, getTierById);
+router.get('/:id', getTierById);
 
 // GET /api/tiers/:id/with-cards - Get tier with cards
-router.get('/:id/with-cards', validateId, getTierWithCards);
+router.get('/:id/with-cards', getTierWithCards);
 
 // POST /api/tiers - Create new tier
 router.post('/', validateTier, createTier);

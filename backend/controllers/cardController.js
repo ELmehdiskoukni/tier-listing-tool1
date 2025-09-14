@@ -4,9 +4,25 @@ import { Comment } from '../models/Comment.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { pool } from '../config/database.js';
 
-// Get all cards
+// Get all cards with role-based filtering
 export const getAllCards = asyncHandler(async (req, res) => {
-  const cards = await Card.getAll();
+  let filters = {};
+  
+  // Apply role-based filtering if user is authenticated
+  if (req.user) {
+    if (req.user.role === 'Member') {
+      // Members only see tasks assigned to them
+      filters.assigneeId = req.user.userId;
+    }
+    // Admins see all tasks (no filtering needed)
+  }
+  
+  // Allow admin override with query parameter
+  if (req.query.assigneeId && req.user && req.user.role === 'Admin') {
+    filters.assigneeId = req.query.assigneeId;
+  }
+  
+  const cards = await Card.getAll(filters);
   
   res.json({
     success: true,
@@ -66,33 +82,44 @@ export const getCardsByTierId = asyncHandler(async (req, res) => {
 
 // Create new card
 export const createCard = asyncHandler(async (req, res) => {
-  const { title, text, type, subtype, imageUrl, hidden, tierId, position } = req.body;
-  
-  // Check if tier exists
-  const tier = await Tier.getById(tierId);
-  if (!tier) {
-    return res.status(404).json({
-      success: false,
-      error: 'Tier not found'
+  const { 
+    id, 
+    title,
+    text, 
+    type, 
+    subtype, 
+    imageUrl, 
+    hidden, 
+    tierId, 
+    position,
+    assigneeId,
+    dueDate
+  } = req.body;
+
+  if (!id || !text || !type || !tierId) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Missing required fields: id, text, type, tierId' 
     });
   }
-  
-  // Generate unique ID
-  const id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
-  // If position not provided, get next available position in tier
-  const cardPosition = position !== undefined && position !== null ? parseInt(position) : await Card.getNextPositionInTier(tierId);
-  
+
+  // Get position if not provided
+  const cardPosition = position !== undefined && position !== null 
+    ? parseInt(position) 
+    : await Card.getNextPositionInTier(tierId);
+
   const cardData = {
     id,
-    title: title || text, // Use title if provided, fallback to text
-    text: text || title,   // Keep text for backward compatibility
+    title: title || text, // Use text as title if title not provided
+    text,
     type,
     subtype,
     imageUrl,
     hidden: hidden || false,
     tierId,
-    position: cardPosition
+    position: cardPosition,
+    assigneeId,
+    dueDate
   };
   
   const newCard = await Card.create(cardData);
@@ -326,7 +353,6 @@ export const bulkCreateCards = asyncHandler(async (req, res) => {
   const cardsToCreate = await Promise.all(cards.map(async (card, index) => {
     const id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const position = card.position !== undefined ? card.position : await Card.getNextPositionInTier(card.tierId);
-    
     return {
       id,
       text: card.text,
@@ -335,7 +361,9 @@ export const bulkCreateCards = asyncHandler(async (req, res) => {
       imageUrl: card.imageUrl,
       hidden: card.hidden || false,
       tierId: card.tierId,
-      position
+      position,
+      assigneeId: card.assigneeId,
+      dueDate: card.dueDate
     };
   }));
   

@@ -9,10 +9,18 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor for logging
+// Request interceptor for logging and authentication
 apiClient.interceptors.request.use(
   (config) => {
     console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    
+    // Add authentication token if available
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+      console.log('🔍 Frontend: Adding auth token to request');
+    }
+    
     return config;
   },
   (error) => {
@@ -153,7 +161,7 @@ export const cardAPI = {
   deleteCard: (id) => apiClient.delete(`/cards/${id}`),
   
   // Move card
-  moveCard: (id, moveData) => apiClient.post(`/cards/${id}/move`, moveData),
+  moveCard: (id, moveData) => apiClient.patch(`/cards/${id}/move`, moveData),
   
   // Duplicate card
   duplicateCard: (id) => apiClient.post(`/cards/${id}/duplicate`),

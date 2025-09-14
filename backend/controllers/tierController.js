@@ -13,9 +13,27 @@ export const getAllTiers = asyncHandler(async (req, res) => {
   });
 });
 
-// Get all tiers with cards
+// Get all tiers with cards (with role-based filtering)
 export const getAllTiersWithCards = asyncHandler(async (req, res) => {
-  const tiers = await Tier.getAllWithCards();
+  let tiers = await Tier.getAllWithCards();
+  
+  // Apply role-based filtering if user is authenticated
+  if (req.user) {
+    if (req.user.role === 'Member') {
+      // Members only see tasks assigned to them
+      tiers = tiers.map(tier => ({
+        ...tier,
+        cards: tier.cards ? tier.cards.filter(card => {
+          // Convert both to strings for comparison to handle type mismatches
+          const cardAssigneeId = card.assigneeId ? String(card.assigneeId) : null;
+          const currentUserId = String(req.user.userId);
+          
+          return cardAssigneeId === currentUserId;
+        }) : []
+      }));
+    }
+    // Admins see all tasks (no filtering needed)
+  }
   
   res.json({
     success: true,

@@ -4,9 +4,19 @@ import { Tier } from '../models/Tier.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { pool } from '../config/database.js';
 
-// Get all source cards
+// Get all source cards (with role-based filtering)
 export const getAllSourceCards = asyncHandler(async (req, res) => {
-  const sourceCards = await SourceCard.getAll();
+  let sourceCards = await SourceCard.getAll();
+  
+  // Apply role-based filtering if user is authenticated
+  if (req.user && req.user.role === 'Member') {
+    // Members only see source cards assigned to them
+    sourceCards = sourceCards.filter(card => {
+      const cardAssigneeId = card.assigneeId ? String(card.assigneeId) : null;
+      const currentUserId = String(req.user.userId);
+      return cardAssigneeId === currentUserId;
+    });
+  }
   
   res.json({
     success: true,
@@ -14,9 +24,23 @@ export const getAllSourceCards = asyncHandler(async (req, res) => {
   });
 });
 
-// Get all source cards grouped by category
+// Get all source cards grouped by category (with role-based filtering)
 export const getAllSourceCardsGrouped = asyncHandler(async (req, res) => {
-  const sourceCards = await SourceCard.getAllGroupedByCategory();
+  let sourceCards = await SourceCard.getAllGroupedByCategory();
+  
+  // Apply role-based filtering if user is authenticated
+  if (req.user && req.user.role === 'Member') {
+    // Members only see source cards assigned to them
+    const currentUserId = String(req.user.userId);
+    
+    // Filter each category's cards
+    Object.keys(sourceCards).forEach(category => {
+      sourceCards[category] = sourceCards[category].filter(card => {
+        const cardAssigneeId = card.assigneeId ? String(card.assigneeId) : null;
+        return cardAssigneeId === currentUserId;
+      });
+    });
+  }
   
   res.json({
     success: true,
@@ -24,11 +48,21 @@ export const getAllSourceCardsGrouped = asyncHandler(async (req, res) => {
   });
 });
 
-// Get source cards by category
+// Get source cards by category (with role-based filtering)
 export const getSourceCardsByCategory = asyncHandler(async (req, res) => {
   const { category } = req.params;
   
-  const sourceCards = await SourceCard.getByCategory(category);
+  let sourceCards = await SourceCard.getByCategory(category);
+  
+  // Apply role-based filtering if user is authenticated
+  if (req.user && req.user.role === 'Member') {
+    // Members only see source cards assigned to them
+    sourceCards = sourceCards.filter(card => {
+      const cardAssigneeId = card.assigneeId ? String(card.assigneeId) : null;
+      const currentUserId = String(req.user.userId);
+      return cardAssigneeId === currentUserId;
+    });
+  }
   
   res.json({
     success: true,

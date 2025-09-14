@@ -256,6 +256,8 @@ static async getWithCards(tierId) {
               'imageUrl', c.image_url,
               'hidden', c.hidden,
               'position', c.position,
+              'assigneeId', c.assignee_user_id,
+              'dueDate', c.due_date,
               'comments', COALESCE(
                 (SELECT json_agg(
                   json_build_object(
@@ -320,6 +322,8 @@ static async getAllWithCards() {
               'imageUrl', c.image_url,
               'hidden', c.hidden,
               'position', c.position,
+              'assigneeId', c.assignee_user_id,
+              'dueDate', c.due_date,
               'comments', COALESCE(
                 (SELECT json_agg(
                   json_build_object(

@@ -254,8 +254,8 @@ export class Version {
           if (tier.cards && Array.isArray(tier.cards)) {
             for (const card of tier.cards) {
               await client.query(
-                'INSERT INTO cards (card_id, title, text, type, subtype, image_url, hidden, tier_id, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-                [card.id, card.title || card.text, card.text, card.type, card.subtype, card.imageUrl, card.hidden || false, tier.id, card.position || 0]
+                'INSERT INTO cards (card_id, title, text, type, subtype, image_url, hidden, tier_id, position, assignee_user_id, due_date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+                [card.id, card.title || card.text, card.text, card.type, card.subtype, card.imageUrl, card.hidden || false, tier.id, card.position || 0, card.assigneeId, card.dueDate]
               );
               
               // Restore comments for this card
@@ -278,8 +278,8 @@ export class Version {
           if (Array.isArray(cards)) {
             for (const card of cards) {
               await client.query(
-                'INSERT INTO source_cards (card_id, text, type, subtype, source_category, image_url) VALUES ($1, $2, $3, $4, $5, $6)',
-                [card.id, card.text, card.type, card.subtype, category, card.imageUrl]
+                'INSERT INTO source_cards (card_id, text, type, subtype, source_category, image_url, assignee_user_id, due_date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+                [card.id, card.text, card.type, card.subtype, category, card.imageUrl, card.assigneeId, card.dueDate]
               );
             }
           }

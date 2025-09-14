@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { toast as toastify } from 'react-toastify'
 import TierRow from './TierRow'
 import CardCreationModal from './CardCreationModal'
@@ -20,10 +20,10 @@ import UndoRedoButtons from './UndoRedoButtons'
 import { useTierBoard } from '../hooks/useTierBoard'
 import apiClient, { tierAPI, sourceCardAPI, usersAPI } from '../api/apiClient'
 
-const TierBoard = ({ hideSourceCards = false }) => {
+const TierBoard = ({ hideSourceCards = false, currentUserId = null, userRole = null }) => {
   // Use the API hook for data management
   const {
-    tiers,
+    tiers: allTiers,
     sourceCards,
     users,
     setUsers,
@@ -72,7 +72,11 @@ const TierBoard = ({ hideSourceCards = false }) => {
     clearToast
   } = useTierBoard()
 
-  // Modal state for card creation
+  // Role-based filtering is now handled by the backend
+  // Frontend just displays the filtered data received from the API
+  const tiers = allTiers
+
+  // State for UI interactions
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedTierId, setSelectedTierId] = useState(null)
 
@@ -371,9 +375,9 @@ const TierBoard = ({ hideSourceCards = false }) => {
 
   // Drag and Drop handlers
   const handleDragStart = (card) => {
-    // Don't allow dragging cards from deleted sources or hidden cards
-    if (isCardFromDeletedSource(card) || card.hidden) {
-      return
+    // For members, only allow dragging their own tasks
+    if (userRole === 'Member' && card.assigneeId !== currentUserId) {
+      return // Prevent drag start for tasks not assigned to current member
     }
     setDraggedCard(card)
   }
@@ -409,12 +413,15 @@ const TierBoard = ({ hideSourceCards = false }) => {
       if (isFromSource) {
         // Moving from source area to tier - create new card
         const newCardData = {
+          id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Always generate unique ID for tier cards
           tierId: targetTierId,
           position: position,
           title: cardData.text, // Ensure title is set from text field
           text: cardData.text,   // Keep text field for backward compatibility
           type: cardData.type,
-          subtype: cardData.subtype
+          subtype: cardData.subtype,
+          assigneeId: cardData.assigneeId, // Preserve assignment from source card
+          dueDate: cardData.dueDate        // Preserve due date from source card
         }
         
         // For persona cards, include userId but don't use it as the card ID
@@ -1155,6 +1162,9 @@ const TierBoard = ({ hideSourceCards = false }) => {
           onDragEnd={handleDragEnd}
           draggedCard={draggedCard}
           onCardRightClick={handleCardRightClick}
+          users={users}
+          currentUserId={currentUserId}
+          userRole={userRole}
         />
       )}
 
@@ -1308,6 +1318,9 @@ const TierBoard = ({ hideSourceCards = false }) => {
                 onAddTierBelow={() => addTierBelow(tier.id)}
                 onCardRightClick={handleCardRightClick}
                 isCardFromDeletedSource={isCardFromDeletedSource}
+                users={users}
+                currentUserId={currentUserId}
+                userRole={userRole}
               />
             ))}
           </div>

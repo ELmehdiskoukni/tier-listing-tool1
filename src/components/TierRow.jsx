@@ -20,7 +20,10 @@ const TierRow = ({
   onAddTierBelow = () => {},
   onCardRightClick = () => {}, // Make sure this prop is here
   isCardFromDeletedSource = () => false, // New prop for checking deleted sources
-  sourceCards = { competitors: [], pages: [], personas: [] } // Provide current source cards for computed image lookup
+  sourceCards = { competitors: [], pages: [], personas: [] }, // Provide current source cards for computed image lookup
+  users = [], // Users data for assignee display
+  currentUserId = null,
+  userRole = null
 }) => {
   const [showAddDropdown, setShowAddDropdown] = useState(false)
   const [isDropdownReady, setIsDropdownReady] = useState(false)
@@ -263,23 +266,23 @@ const TierRow = ({
             />
           </div>
 
-          {/* Add tier button - shows on hover */}
-          <div className={`
-            flex flex-col items-center justify-center bg-gray-50 px-2 border-r border-gray-300 transition-all duration-200
-            ${isRowHovered ? 'opacity-100 w-10' : 'opacity-0 w-0 px-0'}
-          `}>
-            {isRowHovered && (
-              <button
-                onClick={onAddTierBelow}
-                className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-all duration-200 transform hover:scale-110 relative z-10"
-                title="Add tier below"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                </svg>
-              </button>
-            )}
-          </div>
+          {/* Add tier button - shows on hover, only for admin users */}
+          {userRole !== 'Member' && (
+            <div className={`
+              flex flex-col items-center justify-center bg-gray-50 px-2 border-r border-gray-300 transition-all duration-200
+              ${isRowHovered ? 'opacity-100 w-10' : 'opacity-0 w-0 px-0'}
+            `}>
+              {isRowHovered && (
+                <button
+                  onClick={onAddTierBelow}
+                  className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-all duration-200 transform hover:scale-110 relative z-10"
+                  title="Add tier below"
+                >
+                  <span className="text-xs font-bold">+</span>
+                </button>
+              )}
+            </div>
+          )}
           
           {/* Tier label */}
           <div className={`flex items-center justify-center w-16 ${tier?.color || 'bg-gray-200'} border-r border-gray-300`}>
@@ -337,6 +340,9 @@ const TierRow = ({
                   onDragEnd={onDragEnd}
                   isDragging={draggedCard?.id === card.id}
                   onRightClick={onCardRightClick}
+                  users={users}
+                  currentUserId={currentUserId}
+                  userRole={userRole}
                   isDeletedSource={isCardFromDeletedSource ? isCardFromDeletedSource(card) : false}
                 />
               );
@@ -347,20 +353,21 @@ const TierRow = ({
               <div className="w-1 h-12 bg-blue-500 rounded-full animate-pulse" />
             )}
             
-            {/* Add card dropdown button */}
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  console.log('🔍 Main + button clicked')
-                  handleDropdownClick()
-                }}
-                className="w-12 h-12 bg-gray-400 hover:bg-gray-500 text-white rounded-md flex items-center justify-center transition-colors duration-200"
-                title="Add new card or import from sources (click for options)"
-              >
-                <span className="text-xl font-bold">+</span>
-              </button>
+            {/* Add card dropdown button - only show for admin users */}
+            {userRole !== 'Member' && (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    console.log('🔍 Main + button clicked')
+                    handleDropdownClick()
+                  }}
+                  className="w-12 h-12 bg-gray-400 hover:bg-gray-500 text-white rounded-md flex items-center justify-center transition-colors duration-200"
+                  title="Add new card or import from sources (click for options)"
+                >
+                  <span className="text-xl font-bold">+</span>
+                </button>
               
               {/* Dropdown menu - rendered via portal */}
               {showAddDropdown && createPortal(
@@ -452,7 +459,8 @@ const TierRow = ({
                 </div>,
                 document.body
               )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 

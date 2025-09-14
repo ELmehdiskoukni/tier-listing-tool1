@@ -1,6 +1,6 @@
 import React from 'react'
 
-const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDeletedSource = false }) => {
+const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDeletedSource = false, users = [], currentUserId = null, userRole = null }) => {
   // Define card styles based on type - NO ICONS, but support images
   const getCardStyle = (type) => {
     switch (type) {
@@ -34,6 +34,14 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
       e.stopPropagation()
       return
     }
+    
+    // For members, only allow dragging their own tasks
+    if (userRole === 'Member' && card.assigneeId !== currentUserId) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
+    
     e.dataTransfer.setData('application/json', JSON.stringify(card))
     e.dataTransfer.effectAllowed = 'move'
     
@@ -66,11 +74,54 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
   const imgSrc = isBase64 ? rawImage : rawImage
   const isHidden = card.hidden
 
+  // Check if card can be dragged by current user
+  const canDrag = !isHidden && !isDeletedSource && 
+    (userRole !== 'Member' || card.assigneeId === currentUserId)
+
+  // Get assignee information
+  const assignee = users.find(user => user.userId === card.assigneeId)
+  const getInitials = (name) => {
+    if (!name) return ''
+    return name.split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2)
+  }
+
+  // Check if due date is overdue
+  const isDueOverdue = () => {
+    if (!card.dueDate) return false
+    const today = new Date()
+    const dueDate = new Date(card.dueDate)
+    today.setHours(0, 0, 0, 0)
+    dueDate.setHours(0, 0, 0, 0)
+    return dueDate < today
+  }
+
+  // Format due date for display
+  const formatDueDate = (dateString) => {
+    if (!dateString) return ''
+    const date = new Date(dateString)
+    const today = new Date()
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    
+    // Reset time for comparison
+    today.setHours(0, 0, 0, 0)
+    tomorrow.setHours(0, 0, 0, 0)
+    date.setHours(0, 0, 0, 0)
+    
+    if (date.getTime() === today.getTime()) {
+      return 'Today'
+    } else if (date.getTime() === tomorrow.getTime()) {
+      return 'Tomorrow'
+    } else {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    }
+  }
+
   return (
     <div
-      draggable={!isHidden && !isDeletedSource}
+      draggable={canDrag}
       onDragStartCapture={(e) => {
-        if (isHidden || isDeletedSource) {
+        if (!canDrag) {
           e.preventDefault()
           e.stopPropagation()
         }
@@ -85,7 +136,8 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
         ${isDragging ? 'opacity-50 cursor-grabbing' : ''}
         ${isHidden ? 'opacity-60 grayscale bg-gray-200 border-gray-400' : ''}
         ${isDeletedSource ? 'opacity-60 grayscale bg-gray-200 border-gray-400' : ''}
-        ${!isHidden && !isDeletedSource ? 'cursor-grab' : 'cursor-default'}
+        ${!canDrag && userRole === 'Member' && card.assigneeId !== currentUserId ? 'opacity-75 cursor-not-allowed' : ''}
+        ${canDrag ? 'cursor-grab' : 'cursor-default'}
         ${isImageCard ? 'p-1' : 'px-3 py-2'}
         ${isHidden ? 'bg-gray-200 border-gray-400' : isDeletedSource ? 'bg-gray-200 border-gray-400' : getCardStyle(card.type)}
       `}
@@ -121,6 +173,16 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
         </div>
       )}
 
+      {/* Assignee initials - show in top-right if no other indicators */}
+      {assignee && !isDeletedSource && !isHidden && (
+        <div 
+          className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold"
+          title={`Assigned to: ${assignee.name}`}
+        >
+          {getInitials(assignee.name)}
+        </div>
+      )}
+
       {isImageCard && hasImage ? (
         // Image card with actual image
         <div className="flex flex-col items-center gap-1">
@@ -144,18 +206,36 @@ const Card = ({ card, onDragStart, onDragEnd, isDragging, onRightClick, isDelete
           <span className={`text-xs text-center leading-tight px-1 ${isDeletedSource || isHidden ? 'text-gray-500 italic' : ''}`}>
             {isDeletedSource ? 'This item is deleted' : isHidden ? 'This item is hidden' : card.text}
           </span>
+          {/* Due date for image cards */}
+          {card.dueDate && !isDeletedSource && !isHidden && (
+            <div className={`text-xs text-center px-1 mt-1 ${
+              isDueOverdue() ? 'text-red-600 font-semibold' : 'text-gray-600'
+            }`}>
+              {formatDueDate(card.dueDate)}
+            </div>
+          )}
         </div>
       ) : (
         // Text card or image card without image
-        <span className={
-          isDeletedSource
-            ? 'text-gray-500 italic line-through'
-            : isHidden
-              ? (card.sourceCategory ? 'text-gray-500 italic' : 'text-gray-500 italic line-through')
-              : ''
-        }>
-          {isDeletedSource ? 'This item is deleted' : isHidden ? 'This item is hidden' : card.text}
-        </span>
+        <div className="flex flex-col">
+          <span className={
+            isDeletedSource
+              ? 'text-gray-500 italic line-through'
+              : isHidden
+                ? (card.sourceCategory ? 'text-gray-500 italic' : 'text-gray-500 italic line-through')
+                : ''
+          }>
+            {isDeletedSource ? 'This item is deleted' : isHidden ? 'This item is hidden' : card.text}
+          </span>
+          {/* Due date for text cards */}
+          {card.dueDate && !isDeletedSource && !isHidden && (
+            <div className={`text-xs mt-1 ${
+              isDueOverdue() ? 'text-red-600 font-semibold' : 'text-gray-600'
+            }`}>
+              {formatDueDate(card.dueDate)}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import TierBoard from './TierBoard';
 
 const BoardPage = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin, isMember } = useAuth();
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
@@ -12,7 +12,7 @@ const BoardPage = () => {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">
-              Tier Listing Tool - Member Board
+              Tier Listing Tool - {isAdmin() ? 'Admin Dashboard' : 'Task Board'}
             </h1>
             <p className="text-gray-600 mt-1">
               Welcome back, {user?.name} ({user?.role})
@@ -26,8 +26,12 @@ const BoardPage = () => {
           </button>
         </div>
         
-        {/* Main content - TierBoard without SourceCards for members */}
-        <TierBoard hideSourceCards={true} />
+        {/* Main content - Role-based TierBoard */}
+        <TierBoard 
+          hideSourceCards={isMember()} 
+          currentUserId={user?.userId}
+          userRole={user?.role}
+        />
       </div>
     </div>
   );

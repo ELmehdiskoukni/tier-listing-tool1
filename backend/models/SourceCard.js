@@ -12,6 +12,8 @@ export class SourceCard {
         sc.subtype,
         sc.source_category as "sourceCategory",
         sc.image_url as "imageUrl",
+        sc.assignee_user_id as "assigneeId",
+        sc.due_date as "dueDate",
         sc.created_at,
         sc.updated_at,
         sc.hidden,
@@ -28,7 +30,7 @@ export class SourceCard {
         ) FILTER (WHERE scm.comment_id IS NOT NULL) as comments
       FROM source_cards sc
       LEFT JOIN source_comments scm ON sc.card_id = scm.source_card_id
-      GROUP BY sc.card_id, sc.text, sc.type, sc.subtype, sc.source_category, sc.image_url, sc.created_at, sc.updated_at, sc.hidden
+      GROUP BY sc.card_id, sc.text, sc.type, sc.subtype, sc.source_category, sc.image_url, sc.assignee_user_id, sc.due_date, sc.created_at, sc.updated_at, sc.hidden
       ORDER BY sc.source_category, sc.created_at ASC
     `;
     
@@ -46,6 +48,8 @@ export class SourceCard {
         sc.subtype,
         sc.source_category as "sourceCategory",
         sc.image_url as "imageUrl",
+        sc.assignee_user_id as "assigneeId",
+        sc.due_date as "dueDate",
         sc.created_at,
         sc.updated_at,
         sc.hidden,
@@ -63,7 +67,7 @@ export class SourceCard {
       FROM source_cards sc
       LEFT JOIN source_comments scm ON sc.card_id = scm.source_card_id
       WHERE sc.source_category = $1
-      GROUP BY sc.card_id, sc.text, sc.type, sc.subtype, sc.source_category, sc.image_url, sc.created_at, sc.updated_at, sc.hidden
+      GROUP BY sc.card_id, sc.text, sc.type, sc.subtype, sc.source_category, sc.image_url, sc.assignee_user_id, sc.due_date, sc.created_at, sc.updated_at, sc.hidden
       ORDER BY sc.created_at ASC
     `;
     
@@ -81,6 +85,8 @@ export class SourceCard {
         sc.subtype,
         sc.source_category as "sourceCategory",
         sc.image_url as "imageUrl",
+        sc.assignee_user_id as "assigneeId",
+        sc.due_date as "dueDate",
         sc.created_at,
         sc.updated_at,
         sc.hidden,
@@ -98,7 +104,7 @@ export class SourceCard {
       FROM source_cards sc
       LEFT JOIN source_comments scm ON sc.card_id = scm.source_card_id
       WHERE sc.card_id = $1
-      GROUP BY sc.card_id, sc.text, sc.type, sc.subtype, sc.source_category, sc.image_url, sc.created_at, sc.updated_at, sc.hidden
+      GROUP BY sc.card_id, sc.text, sc.type, sc.subtype, sc.source_category, sc.image_url, sc.assignee_user_id, sc.due_date, sc.created_at, sc.updated_at, sc.hidden
     `;
     
     const result = await pool.query(query, [cardId]);
@@ -131,7 +137,7 @@ export class SourceCard {
 
   // Update source card
   static async update(cardId, updateData) {
-    const { text, type, subtype, imageUrl } = updateData;
+    const { text, type, subtype, imageUrl, assigneeId, dueDate } = updateData;
     
     const query = `
       UPDATE source_cards 
@@ -140,6 +146,8 @@ export class SourceCard {
         type = COALESCE($3, type),
         subtype = COALESCE($4, subtype),
         image_url = COALESCE($5, image_url),
+        assignee_user_id = COALESCE($6, assignee_user_id),
+        due_date = COALESCE($7, due_date),
         updated_at = CURRENT_TIMESTAMP
       WHERE card_id = $1
       RETURNING 
@@ -149,11 +157,13 @@ export class SourceCard {
         subtype,
         source_category as sourceCategory,
         image_url as imageUrl,
+        assignee_user_id as assigneeId,
+        due_date as dueDate,
         created_at,
         updated_at
     `;
     
-    const result = await pool.query(query, [cardId, text, type, subtype, imageUrl]);
+    const result = await pool.query(query, [cardId, text, type, subtype, imageUrl, assigneeId, dueDate]);
     
     if (result.rows.length === 0) {
       throw new AppError('Source card not found', 404);
@@ -221,6 +231,8 @@ export class SourceCard {
             'subtype', sc.subtype,
             'sourceCategory', sc.source_category,
             'imageUrl', sc.image_url,
+            'assigneeId', sc.assignee_user_id,
+            'dueDate', sc.due_date,
             'createdAt', sc.created_at,
             'updatedAt', sc.updated_at,
             'hidden', sc.hidden,

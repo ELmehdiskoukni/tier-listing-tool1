@@ -2,8 +2,34 @@ import { pool } from '../config/database.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 export class Card {
-  // Get all cards
-  static async getAll() {
+  // Get all cards with optional filtering
+  static async getAll(filters = {}) {
+    let query = `
+      SELECT card_id as id, title, text, type, subtype, image_url as imageUrl, 
+             hidden, tier_id as tierId, position, created_at as createdAt, 
+             updated_at as updatedAt, assignee_user_id as assigneeId, due_date as dueDate
+      FROM cards
+    `;
+    const params = [];
+    const conditions = [];
+
+    if (filters.assigneeId) {
+      conditions.push(`assignee_user_id = $${params.length + 1}`);
+      params.push(filters.assigneeId);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+
+    query += ' ORDER BY tier_id, position';
+    
+    const result = await pool.query(query, params);
+    return result.rows;
+  }
+
+  // Get cards by assignee (for role-based filtering)
+  static async getByAssignee(assigneeId) {
     const query = `
       SELECT 
         card_id as id,
@@ -15,36 +41,35 @@ export class Card {
         hidden,
         tier_id as tierId,
         position,
-        created_at,
-        updated_at
+        assignee_user_id as assigneeId,
+        due_date as dueDate,
+        created_at as createdAt,
+        updated_at as updatedAt
       FROM cards 
-      ORDER BY tier_id, position ASC
+      WHERE assignee_user_id = $1
+      ORDER BY tier_id, position
     `;
     
-    const result = await pool.query(query);
+    const result = await pool.query(query, [assigneeId]);
     return result.rows;
   }
 
   // Get card by ID
   static async getById(cardId) {
     const query = `
-      SELECT 
-        card_id as "id",
-        title,
-        text,
-        type,
-        subtype,
-        image_url as "imageUrl",
-        hidden,
-        tier_id as "tierId",
-        position,
-        created_at,
-        updated_at
+      SELECT card_id as id, title, text, type, subtype, image_url as imageUrl, 
+             hidden, tier_id as tierId, position, created_at as createdAt, 
+             updated_at as updatedAt, assignee_user_id as assigneeId, due_date as dueDate
       FROM cards 
       WHERE card_id = $1
     `;
     
     const result = await pool.query(query, [cardId]);
+    
+    if (result.rows.length === 0) {
+      throw new AppError('Card not found', 404);
+    }
+    
     return result.rows[0];
   }
 
@@ -53,7 +78,6 @@ export class Card {
     const query = `
       SELECT 
         c.card_id as id,
-        c.title,
         c.text,
         c.type,
         c.subtype,
@@ -61,8 +85,10 @@ export class Card {
         c.hidden,
         c.tier_id as tierId,
         c.position,
-        c.created_at,
-        c.updated_at,
+        c.assignee_user_id as assigneeId,
+        c.due_date as dueDate,
+        c.created_at as createdAt,
+        c.updated_at as updatedAt,
         json_agg(
           CASE 
             WHEN cm.comment_id IS NOT NULL THEN
@@ -77,7 +103,7 @@ export class Card {
       FROM cards c
       LEFT JOIN comments cm ON c.card_id = cm.card_id
       WHERE c.tier_id = $1
-      GROUP BY c.card_id, c.title, c.text, c.type, c.subtype, c.image_url, c.hidden, c.tier_id, c.position, c.created_at, c.updated_at
+      GROUP BY c.card_id, c.text, c.type, c.subtype, c.image_url, c.hidden, c.tier_id, c.position, c.assignee_user_id, c.due_date, c.created_at, c.updated_at
       ORDER BY c.position ASC
     `;
     
@@ -87,34 +113,26 @@ export class Card {
 
   // Create new card
   static async create(cardData) {
-    const { id, title, text, type, subtype, imageUrl, hidden = false, tierId, position } = cardData;
+    const { id, title, text, type, subtype, imageUrl, hidden = false, tierId, position, assigneeId, dueDate } = cardData;
+    
+    // Use text as title if title is not provided
+    const cardTitle = title || text || 'Untitled';
     
     const query = `
-      INSERT INTO cards (card_id, title, text, type, subtype, image_url, hidden, tier_id, position)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING 
-        card_id as "id",
-        title,
-        text,
-        type,
-        subtype,
-        image_url as "imageUrl",
-        hidden,
-        tier_id as "tierId",
-        position,
-        created_at,
-        updated_at
+      INSERT INTO cards (card_id, title, text, type, subtype, image_url, hidden, tier_id, position, assignee_user_id, due_date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING card_id as id, title, text, type, subtype, image_url as imageUrl, 
+                hidden, tier_id as tierId, position, created_at as createdAt, 
+                updated_at as updatedAt, assignee_user_id as assigneeId, due_date as dueDate
     `;
     
-    const result = await pool.query(query, [id, title, text, type, subtype, imageUrl, hidden, tierId, position]);
-    const createdCard = result.rows[0];
-    
-    return createdCard;
+    const result = await pool.query(query, [id, cardTitle, text, type, subtype, imageUrl, hidden, tierId, position, assigneeId, dueDate]);
+    return result.rows[0];
   }
 
   // Update card
   static async update(cardId, updateData) {
-    const { title, text, type, subtype, imageUrl, hidden, position } = updateData;
+    const { title, text, type, subtype, imageUrl, hidden, position, assigneeId, dueDate } = updateData;
     
     const query = `
       UPDATE cards 
@@ -126,6 +144,8 @@ export class Card {
         image_url = COALESCE($6, image_url),
         hidden = COALESCE($7, hidden),
         position = COALESCE($8, position),
+        assignee_user_id = COALESCE($9, assignee_user_id),
+        due_date = COALESCE($10, due_date),
         updated_at = CURRENT_TIMESTAMP
       WHERE card_id = $1
       RETURNING 
@@ -138,11 +158,13 @@ export class Card {
         hidden,
         tier_id as tierId,
         position,
-        created_at,
-        updated_at
+        assignee_user_id as assigneeId,
+        due_date as dueDate,
+        created_at as createdAt,
+        updated_at as updatedAt
     `;
     
-    const result = await pool.query(query, [cardId, title, text, type, subtype, imageUrl, hidden, position]);
+    const result = await pool.query(query, [cardId, title, text, type, subtype, imageUrl, hidden, position, assigneeId, dueDate]);
     
     if (result.rows.length === 0) {
       throw new AppError('Card not found', 404);
@@ -172,7 +194,7 @@ export class Card {
       
       // Get current card info
       const currentResult = await client.query(
-        'SELECT tier_id, position FROM cards WHERE card_id = $1',
+        'SELECT tier_id, position, assignee_user_id, due_date FROM cards WHERE card_id = $1',
         [cardId]
       );
       
@@ -190,7 +212,7 @@ export class Card {
         // Moving to different tier
         // First, get the card data before deleting
         const cardDataResult = await client.query(
-          'SELECT text, type, subtype, image_url, hidden FROM cards WHERE card_id = $1',
+          'SELECT title, text, type, subtype, image_url, hidden, assignee_user_id, due_date FROM cards WHERE card_id = $1',
           [cardId]
         );
         
@@ -218,8 +240,8 @@ export class Card {
         );
         
         await client.query(
-          'INSERT INTO cards (card_id, text, type, subtype, image_url, hidden, tier_id, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [cardId, cardData.text, cardData.type, cardData.subtype, cardData.image_url, cardData.hidden, targetTierId, newPosition]
+          'INSERT INTO cards (card_id, title, text, type, subtype, image_url, hidden, tier_id, position, assignee_user_id, due_date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+          [cardId, cardData.title, cardData.text, cardData.type, cardData.subtype, cardData.image_url, cardData.hidden, targetTierId, newPosition, cardData.assignee_user_id, cardData.due_date]
         );
       }
       
@@ -284,25 +306,20 @@ export class Card {
       const createdCards = [];
       
       for (const cardData of cardsData) {
-        const { id, text, type, subtype, imageUrl, hidden = false, tierId, position } = cardData;
+        const { id, title, text, type, subtype, imageUrl, hidden = false, tierId, position, assigneeId, dueDate } = cardData;
+        
+        // Use text as title if title is not provided
+        const cardTitle = title || text || 'Untitled';
         
         const query = `
-          INSERT INTO cards (card_id, text, type, subtype, image_url, hidden, tier_id, position)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          RETURNING 
-            card_id as id,
-            text,
-            type,
-            subtype,
-            image_url as imageUrl,
-            hidden,
-            tier_id as tierId,
-            position,
-            created_at,
-            updated_at
+          INSERT INTO cards (card_id, title, text, type, subtype, image_url, hidden, tier_id, position, assignee_user_id, due_date)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          RETURNING card_id as id, title, text, type, subtype, image_url as imageUrl, 
+                    hidden, tier_id as tierId, position, created_at as createdAt, 
+                    updated_at as updatedAt, assignee_user_id as assigneeId, due_date as dueDate
         `;
         
-        const result = await client.query(query, [id, text, type, subtype, imageUrl, hidden, tierId, position]);
+        const result = await client.query(query, [id, cardTitle, text, type, subtype, imageUrl, hidden, tierId, position, assigneeId, dueDate]);
         createdCards.push(result.rows[0]);
       }
       
@@ -335,6 +352,8 @@ export class Card {
         c.hidden,
         c.tier_id as tierId,
         c.position,
+        c.assignee_id as assigneeId,
+        c.due_date as dueDate,
         c.created_at,
         c.updated_at,
         json_agg(
@@ -351,7 +370,7 @@ export class Card {
       FROM cards c
       LEFT JOIN comments cm ON c.card_id = cm.card_id
       WHERE c.card_id = $1
-      GROUP BY c.card_id, c.text, c.type, c.subtype, c.image_url, c.hidden, c.tier_id, c.position, c.created_at, c.updated_at
+      GROUP BY c.card_id, c.text, c.type, c.subtype, c.image_url, c.hidden, c.tier_id, c.position, c.assignee_id, c.due_date, c.created_at, c.updated_at
     `;
     
     const result = await pool.query(query, [cardId]);
